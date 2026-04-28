@@ -38,6 +38,14 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const joinedRooms = [...socket.rooms];
+
+    for (const room of joinedRooms) {
+      if (room !== socket.id) {
+        socket.leave(room);
+      }
+    }
+
     socket.join(trimmedRoomId);
     console.log(`Socket ${socket.id} joined room ${trimmedRoomId}`);
 
