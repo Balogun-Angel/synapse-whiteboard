@@ -95,8 +95,8 @@ function App() {
 
     const rect = canvas.getBoundingClientRect();
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x: event.clientX - rect.left - canvas.clientLeft,
+      y: event.clientY - rect.top - canvas.clientTop,
     };
   };
 
