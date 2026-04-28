@@ -3,6 +3,16 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 
+type DrawPayload = {
+  prevX: number;
+  prevY: number;
+  x: number;
+  y: number;
+  color: string;
+  brushSize: number;
+  roomId: string;
+};
+
 const app = express();
 
 app.use(cors({
@@ -53,6 +63,16 @@ io.on("connection", (socket) => {
       roomId: trimmedRoomId,
       message: `Joined room ${trimmedRoomId}`,
     });
+  });
+
+  socket.on("draw", (data: DrawPayload) => {
+    const { roomId } = data;
+
+    if (!roomId) {
+      return;
+    }
+
+    socket.to(roomId).emit("draw", data);
   });
 
   socket.on("disconnect", () => {

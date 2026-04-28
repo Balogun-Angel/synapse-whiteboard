@@ -11,6 +11,16 @@ type RoomErrorPayload = {
   message: string;
 };
 
+type DrawPayload = {
+  prevX: number;
+  prevY: number;
+  x: number;
+  y: number;
+  color: string;
+  brushSize: number;
+  roomId: string;
+};
+
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [socketId, setSocketId] = useState("");
@@ -22,7 +32,7 @@ function App() {
   const [brushSize, setBrushSize] = useState(4);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
-  const lastPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const newSocket: Socket = io("http://localhost:5000", {
@@ -31,7 +41,7 @@ function App() {
     socketRef.current = newSocket;
     const handleWindowMouseUp = () => {
       isDrawingRef.current = false;
-      lastPositionRef.current = null;
+      lastPointRef.current = null;
     };
     window.addEventListener("mouseup", handleWindowMouseUp);
 
@@ -62,17 +72,51 @@ function App() {
       console.log("Connection error:", error.message);
     });
 
+    newSocket.on("draw", ({ prevX, prevY, x, y, color, brushSize }: DrawPayload) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        return;
+      }
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        return;
+      }
+
+      drawLine(context, prevX, prevY, x, y, color, brushSize);
+    });
+
     return () => {
       newSocket.off("connect");
       newSocket.off("disconnect");
       newSocket.off("room-joined");
       newSocket.off("room-error");
       newSocket.off("connect_error");
+      newSocket.off("draw");
       newSocket.close();
       window.removeEventListener("mouseup", handleWindowMouseUp);
       socketRef.current = null;
     };
   }, []);
+
+  const drawLine = (
+    context: CanvasRenderingContext2D,
+    prevX: number,
+    prevY: number,
+    x: number,
+    y: number,
+    color: string,
+    size: number,
+  ) => {
+    context.beginPath();
+    context.moveTo(prevX, prevY);
+    context.lineTo(x, y);
+    context.strokeStyle = color;
+    context.lineWidth = size;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.stroke();
+  };
 
   const handleJoinRoom = () => {
     const trimmedRoomId = roomInput.trim();
@@ -120,7 +164,7 @@ function App() {
     }
 
     isDrawingRef.current = true;
-    lastPositionRef.current = position;
+    lastPointRef.current = position;
 
     context.fillStyle = brushColor;
     context.beginPath();
@@ -135,9 +179,9 @@ function App() {
 
     const canvas = canvasRef.current;
     const position = getMousePosition(event);
-    const lastPosition = lastPositionRef.current;
+    const lastPoint = lastPointRef.current;
 
-    if (!canvas || !position || !lastPosition) {
+    if (!canvas || !position || !lastPoint) {
       return;
     }
 
@@ -146,21 +190,35 @@ function App() {
       return;
     }
 
-    context.strokeStyle = brushColor;
-    context.lineWidth = brushSize;
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.beginPath();
-    context.moveTo(lastPosition.x, lastPosition.y);
-    context.lineTo(position.x, position.y);
-    context.stroke();
+    drawLine(
+      context,
+      lastPoint.x,
+      lastPoint.y,
+      position.x,
+      position.y,
+      brushColor,
+      brushSize,
+    );
 
-    lastPositionRef.current = position;
+    const socket = socketRef.current;
+    if (socket && joinedRoom) {
+      socket.emit("draw", {
+        prevX: lastPoint.x,
+        prevY: lastPoint.y,
+        x: position.x,
+        y: position.y,
+        color: brushColor,
+        brushSize,
+        roomId: joinedRoom,
+      } satisfies DrawPayload);
+    }
+
+    lastPointRef.current = position;
   };
 
   const stopDrawing = () => {
     isDrawingRef.current = false;
-    lastPositionRef.current = null;
+    lastPointRef.current = null;
   };
 
   const clearCanvas = () => {
