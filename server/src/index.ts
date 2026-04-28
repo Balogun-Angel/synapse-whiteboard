@@ -30,6 +30,23 @@ const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  socket.on("join-room", (roomId: string) => {
+    const trimmedRoomId = roomId?.trim();
+
+    if (!trimmedRoomId) {
+      socket.emit("room-error", { message: "Room ID is required" });
+      return;
+    }
+
+    socket.join(trimmedRoomId);
+    console.log(`Socket ${socket.id} joined room ${trimmedRoomId}`);
+
+    socket.emit("room-joined", {
+      roomId: trimmedRoomId,
+      message: `Joined room ${trimmedRoomId}`,
+    });
+  });
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
   });
