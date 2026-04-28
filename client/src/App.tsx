@@ -14,7 +14,7 @@ type RoomErrorPayload = {
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [socketId, setSocketId] = useState("");
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [roomInput, setRoomInput] = useState("");
   const [joinedRoom, setJoinedRoom] = useState("");
   const [roomStatus, setRoomStatus] = useState("");
@@ -28,7 +28,12 @@ function App() {
     const newSocket: Socket = io("http://localhost:5000", {
       transports: ["websocket", "polling"],
     });
-    setSocket(newSocket);
+    socketRef.current = newSocket;
+    const handleWindowMouseUp = () => {
+      isDrawingRef.current = false;
+      lastPositionRef.current = null;
+    };
+    window.addEventListener("mouseup", handleWindowMouseUp);
 
     newSocket.on("connect", () => {
       setIsConnected(true);
@@ -64,7 +69,8 @@ function App() {
       newSocket.off("room-error");
       newSocket.off("connect_error");
       newSocket.close();
-      setSocket(null);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+      socketRef.current = null;
     };
   }, []);
 
@@ -76,6 +82,7 @@ function App() {
       return;
     }
 
+    const socket = socketRef.current;
     if (!socket || !isConnected) {
       setRoomStatus("Not connected to server");
       return;
@@ -101,13 +108,24 @@ function App() {
   };
 
   const startDrawing = (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
+    const canvas = canvasRef.current;
     const position = getMousePosition(event);
-    if (!position) {
+    if (!canvas || !position) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
       return;
     }
 
     isDrawingRef.current = true;
     lastPositionRef.current = position;
+
+    context.fillStyle = brushColor;
+    context.beginPath();
+    context.arc(position.x, position.y, Math.max(1, brushSize / 2), 0, Math.PI * 2);
+    context.fill();
   };
 
   const draw = (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
