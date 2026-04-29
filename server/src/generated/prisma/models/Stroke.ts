@@ -27,108 +27,76 @@ export type AggregateStroke = {
 }
 
 export type StrokeAvgAggregateOutputType = {
-  prevX: number | null
-  prevY: number | null
-  x: number | null
-  y: number | null
   brushSize: number | null
 }
 
 export type StrokeSumAggregateOutputType = {
-  prevX: number | null
-  prevY: number | null
-  x: number | null
-  y: number | null
   brushSize: number | null
 }
 
 export type StrokeMinAggregateOutputType = {
   id: string | null
   roomId: string | null
-  prevX: number | null
-  prevY: number | null
-  x: number | null
-  y: number | null
   color: string | null
   brushSize: number | null
+  isUndone: boolean | null
   createdAt: Date | null
 }
 
 export type StrokeMaxAggregateOutputType = {
   id: string | null
   roomId: string | null
-  prevX: number | null
-  prevY: number | null
-  x: number | null
-  y: number | null
   color: string | null
   brushSize: number | null
+  isUndone: boolean | null
   createdAt: Date | null
 }
 
 export type StrokeCountAggregateOutputType = {
   id: number
   roomId: number
-  prevX: number
-  prevY: number
-  x: number
-  y: number
+  points: number
   color: number
   brushSize: number
+  isUndone: number
   createdAt: number
   _all: number
 }
 
 
 export type StrokeAvgAggregateInputType = {
-  prevX?: true
-  prevY?: true
-  x?: true
-  y?: true
   brushSize?: true
 }
 
 export type StrokeSumAggregateInputType = {
-  prevX?: true
-  prevY?: true
-  x?: true
-  y?: true
   brushSize?: true
 }
 
 export type StrokeMinAggregateInputType = {
   id?: true
   roomId?: true
-  prevX?: true
-  prevY?: true
-  x?: true
-  y?: true
   color?: true
   brushSize?: true
+  isUndone?: true
   createdAt?: true
 }
 
 export type StrokeMaxAggregateInputType = {
   id?: true
   roomId?: true
-  prevX?: true
-  prevY?: true
-  x?: true
-  y?: true
   color?: true
   brushSize?: true
+  isUndone?: true
   createdAt?: true
 }
 
 export type StrokeCountAggregateInputType = {
   id?: true
   roomId?: true
-  prevX?: true
-  prevY?: true
-  x?: true
-  y?: true
+  points?: true
   color?: true
   brushSize?: true
+  isUndone?: true
   createdAt?: true
   _all?: true
 }
@@ -222,12 +190,10 @@ export type StrokeGroupByArgs<ExtArgs extends runtime.Types.Extensions.InternalA
 export type StrokeGroupByOutputType = {
   id: string
   roomId: string
-  prevX: number
-  prevY: number
-  x: number
-  y: number
+  points: runtime.JsonValue
   color: string
   brushSize: number
+  isUndone: boolean
   createdAt: Date
   _count: StrokeCountAggregateOutputType | null
   _avg: StrokeAvgAggregateOutputType | null
@@ -257,24 +223,20 @@ export type StrokeWhereInput = {
   NOT?: Prisma.StrokeWhereInput | Prisma.StrokeWhereInput[]
   id?: Prisma.StringFilter<"Stroke"> | string
   roomId?: Prisma.StringFilter<"Stroke"> | string
-  prevX?: Prisma.FloatFilter<"Stroke"> | number
-  prevY?: Prisma.FloatFilter<"Stroke"> | number
-  x?: Prisma.FloatFilter<"Stroke"> | number
-  y?: Prisma.FloatFilter<"Stroke"> | number
+  points?: Prisma.JsonFilter<"Stroke">
   color?: Prisma.StringFilter<"Stroke"> | string
-  brushSize?: Prisma.FloatFilter<"Stroke"> | number
+  brushSize?: Prisma.IntFilter<"Stroke"> | number
+  isUndone?: Prisma.BoolFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
 }
 
 export type StrokeOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   roomId?: Prisma.SortOrder
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
+  points?: Prisma.SortOrder
   color?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
+  isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -284,24 +246,20 @@ export type StrokeWhereUniqueInput = Prisma.AtLeast<{
   OR?: Prisma.StrokeWhereInput[]
   NOT?: Prisma.StrokeWhereInput | Prisma.StrokeWhereInput[]
   roomId?: Prisma.StringFilter<"Stroke"> | string
-  prevX?: Prisma.FloatFilter<"Stroke"> | number
-  prevY?: Prisma.FloatFilter<"Stroke"> | number
-  x?: Prisma.FloatFilter<"Stroke"> | number
-  y?: Prisma.FloatFilter<"Stroke"> | number
+  points?: Prisma.JsonFilter<"Stroke">
   color?: Prisma.StringFilter<"Stroke"> | string
-  brushSize?: Prisma.FloatFilter<"Stroke"> | number
+  brushSize?: Prisma.IntFilter<"Stroke"> | number
+  isUndone?: Prisma.BoolFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
 }, "id">
 
 export type StrokeOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   roomId?: Prisma.SortOrder
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
+  points?: Prisma.SortOrder
   color?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
+  isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.StrokeCountOrderByAggregateInput
   _avg?: Prisma.StrokeAvgOrderByAggregateInput
@@ -316,148 +274,116 @@ export type StrokeScalarWhereWithAggregatesInput = {
   NOT?: Prisma.StrokeScalarWhereWithAggregatesInput | Prisma.StrokeScalarWhereWithAggregatesInput[]
   id?: Prisma.StringWithAggregatesFilter<"Stroke"> | string
   roomId?: Prisma.StringWithAggregatesFilter<"Stroke"> | string
-  prevX?: Prisma.FloatWithAggregatesFilter<"Stroke"> | number
-  prevY?: Prisma.FloatWithAggregatesFilter<"Stroke"> | number
-  x?: Prisma.FloatWithAggregatesFilter<"Stroke"> | number
-  y?: Prisma.FloatWithAggregatesFilter<"Stroke"> | number
+  points?: Prisma.JsonWithAggregatesFilter<"Stroke">
   color?: Prisma.StringWithAggregatesFilter<"Stroke"> | string
-  brushSize?: Prisma.FloatWithAggregatesFilter<"Stroke"> | number
+  brushSize?: Prisma.IntWithAggregatesFilter<"Stroke"> | number
+  isUndone?: Prisma.BoolWithAggregatesFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Stroke"> | Date | string
 }
 
 export type StrokeCreateInput = {
   id?: string
   roomId: string
-  prevX: number
-  prevY: number
-  x: number
-  y: number
+  points: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color: string
   brushSize: number
+  isUndone?: boolean
   createdAt?: Date | string
 }
 
 export type StrokeUncheckedCreateInput = {
   id?: string
   roomId: string
-  prevX: number
-  prevY: number
-  x: number
-  y: number
+  points: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color: string
   brushSize: number
+  isUndone?: boolean
   createdAt?: Date | string
 }
 
 export type StrokeUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   roomId?: Prisma.StringFieldUpdateOperationsInput | string
-  prevX?: Prisma.FloatFieldUpdateOperationsInput | number
-  prevY?: Prisma.FloatFieldUpdateOperationsInput | number
-  x?: Prisma.FloatFieldUpdateOperationsInput | number
-  y?: Prisma.FloatFieldUpdateOperationsInput | number
+  points?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color?: Prisma.StringFieldUpdateOperationsInput | string
-  brushSize?: Prisma.FloatFieldUpdateOperationsInput | number
+  brushSize?: Prisma.IntFieldUpdateOperationsInput | number
+  isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   roomId?: Prisma.StringFieldUpdateOperationsInput | string
-  prevX?: Prisma.FloatFieldUpdateOperationsInput | number
-  prevY?: Prisma.FloatFieldUpdateOperationsInput | number
-  x?: Prisma.FloatFieldUpdateOperationsInput | number
-  y?: Prisma.FloatFieldUpdateOperationsInput | number
+  points?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color?: Prisma.StringFieldUpdateOperationsInput | string
-  brushSize?: Prisma.FloatFieldUpdateOperationsInput | number
+  brushSize?: Prisma.IntFieldUpdateOperationsInput | number
+  isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeCreateManyInput = {
   id?: string
   roomId: string
-  prevX: number
-  prevY: number
-  x: number
-  y: number
+  points: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color: string
   brushSize: number
+  isUndone?: boolean
   createdAt?: Date | string
 }
 
 export type StrokeUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   roomId?: Prisma.StringFieldUpdateOperationsInput | string
-  prevX?: Prisma.FloatFieldUpdateOperationsInput | number
-  prevY?: Prisma.FloatFieldUpdateOperationsInput | number
-  x?: Prisma.FloatFieldUpdateOperationsInput | number
-  y?: Prisma.FloatFieldUpdateOperationsInput | number
+  points?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color?: Prisma.StringFieldUpdateOperationsInput | string
-  brushSize?: Prisma.FloatFieldUpdateOperationsInput | number
+  brushSize?: Prisma.IntFieldUpdateOperationsInput | number
+  isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   roomId?: Prisma.StringFieldUpdateOperationsInput | string
-  prevX?: Prisma.FloatFieldUpdateOperationsInput | number
-  prevY?: Prisma.FloatFieldUpdateOperationsInput | number
-  x?: Prisma.FloatFieldUpdateOperationsInput | number
-  y?: Prisma.FloatFieldUpdateOperationsInput | number
+  points?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   color?: Prisma.StringFieldUpdateOperationsInput | string
-  brushSize?: Prisma.FloatFieldUpdateOperationsInput | number
+  brushSize?: Prisma.IntFieldUpdateOperationsInput | number
+  isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   roomId?: Prisma.SortOrder
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
+  points?: Prisma.SortOrder
   color?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
+  isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
 export type StrokeAvgOrderByAggregateInput = {
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
 }
 
 export type StrokeMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   roomId?: Prisma.SortOrder
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
   color?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
+  isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
 export type StrokeMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   roomId?: Prisma.SortOrder
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
   color?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
+  isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
 export type StrokeSumOrderByAggregateInput = {
-  prevX?: Prisma.SortOrder
-  prevY?: Prisma.SortOrder
-  x?: Prisma.SortOrder
-  y?: Prisma.SortOrder
   brushSize?: Prisma.SortOrder
 }
 
@@ -465,12 +391,16 @@ export type StringFieldUpdateOperationsInput = {
   set?: string
 }
 
-export type FloatFieldUpdateOperationsInput = {
+export type IntFieldUpdateOperationsInput = {
   set?: number
   increment?: number
   decrement?: number
   multiply?: number
   divide?: number
+}
+
+export type BoolFieldUpdateOperationsInput = {
+  set?: boolean
 }
 
 export type DateTimeFieldUpdateOperationsInput = {
@@ -482,52 +412,44 @@ export type DateTimeFieldUpdateOperationsInput = {
 export type StrokeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   roomId?: boolean
-  prevX?: boolean
-  prevY?: boolean
-  x?: boolean
-  y?: boolean
+  points?: boolean
   color?: boolean
   brushSize?: boolean
+  isUndone?: boolean
   createdAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   roomId?: boolean
-  prevX?: boolean
-  prevY?: boolean
-  x?: boolean
-  y?: boolean
+  points?: boolean
   color?: boolean
   brushSize?: boolean
+  isUndone?: boolean
   createdAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   roomId?: boolean
-  prevX?: boolean
-  prevY?: boolean
-  x?: boolean
-  y?: boolean
+  points?: boolean
   color?: boolean
   brushSize?: boolean
+  isUndone?: boolean
   createdAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectScalar = {
   id?: boolean
   roomId?: boolean
-  prevX?: boolean
-  prevY?: boolean
-  x?: boolean
-  y?: boolean
+  points?: boolean
   color?: boolean
   brushSize?: boolean
+  isUndone?: boolean
   createdAt?: boolean
 }
 
-export type StrokeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "roomId" | "prevX" | "prevY" | "x" | "y" | "color" | "brushSize" | "createdAt", ExtArgs["result"]["stroke"]>
+export type StrokeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "roomId" | "points" | "color" | "brushSize" | "isUndone" | "createdAt", ExtArgs["result"]["stroke"]>
 
 export type $StrokePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Stroke"
@@ -535,12 +457,10 @@ export type $StrokePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     roomId: string
-    prevX: number
-    prevY: number
-    x: number
-    y: number
+    points: runtime.JsonValue
     color: string
     brushSize: number
+    isUndone: boolean
     createdAt: Date
   }, ExtArgs["result"]["stroke"]>
   composites: {}
@@ -967,12 +887,10 @@ export interface Prisma__StrokeClient<T, Null = never, ExtArgs extends runtime.T
 export interface StrokeFieldRefs {
   readonly id: Prisma.FieldRef<"Stroke", 'String'>
   readonly roomId: Prisma.FieldRef<"Stroke", 'String'>
-  readonly prevX: Prisma.FieldRef<"Stroke", 'Float'>
-  readonly prevY: Prisma.FieldRef<"Stroke", 'Float'>
-  readonly x: Prisma.FieldRef<"Stroke", 'Float'>
-  readonly y: Prisma.FieldRef<"Stroke", 'Float'>
+  readonly points: Prisma.FieldRef<"Stroke", 'Json'>
   readonly color: Prisma.FieldRef<"Stroke", 'String'>
-  readonly brushSize: Prisma.FieldRef<"Stroke", 'Float'>
+  readonly brushSize: Prisma.FieldRef<"Stroke", 'Int'>
+  readonly isUndone: Prisma.FieldRef<"Stroke", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"Stroke", 'DateTime'>
 }
     

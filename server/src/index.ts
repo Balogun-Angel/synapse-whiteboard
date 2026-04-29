@@ -4,13 +4,15 @@ import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "./generated/prisma/client";
+import { Prisma, PrismaClient } from "./generated/prisma/client";
 
-type DrawPayload = {
-  prevX: number;
-  prevY: number;
+type Point = {
   x: number;
   y: number;
+};
+
+type DrawStrokePayload = {
+  points: Point[];
   color: string;
   brushSize: number;
   roomId: string;
@@ -24,9 +26,23 @@ type LeaveRoomPayload = {
   roomId: string;
 };
 
+type RoomPayload = {
+  roomId: string;
+};
+
 const app = express();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const fetchActiveStrokes = async (roomId: string) => {
+  return prisma.stroke.findMany({
+    where: {
+      roomId,
+      isUndone: false,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+};
 
 app.use(cors({
   origin: "http://localhost:5173",
@@ -78,10 +94,7 @@ io.on("connection", (socket) => {
     });
 
     try {
-      const strokes = await prisma.stroke.findMany({
-        where: { roomId: trimmedRoomId },
-        orderBy: { createdAt: "asc" },
-      });
+      const strokes = await fetchActiveStrokes(trimmedRoomId);
 
       socket.emit("load-strokes", strokes);
     } catch (error) {
@@ -90,10 +103,10 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("draw", async (data: DrawPayload) => {
-    const { roomId } = data;
+  socket.on("draw-stroke", async (data: DrawStrokePayload) => {
+    const { roomId, points, color, brushSize } = data;
 
-    if (!roomId) {
+    if (!roomId || !Array.isArray(points) || points.length === 0) {
       return;
     }
 
@@ -101,19 +114,79 @@ io.on("connection", (socket) => {
       await prisma.stroke.create({
         data: {
           roomId,
-          prevX: data.prevX,
-          prevY: data.prevY,
-          x: data.x,
-          y: data.y,
-          color: data.color,
-          brushSize: data.brushSize,
+          points: points as unknown as Prisma.InputJsonValue,
+          color,
+          brushSize: Math.round(brushSize),
+          isUndone: false,
         },
       });
     } catch (error) {
       console.error("Failed to save stroke:", error);
     }
 
-    socket.to(roomId).emit("draw", data);
+    socket.to(roomId).emit("draw-stroke", data);
+  });
+
+  socket.on("undo-stroke", async ({ roomId }: RoomPayload) => {
+    if (!roomId) {
+      return;
+    }
+
+    try {
+      const latestStroke = await prisma.stroke.findFirst({
+        where: {
+          roomId,
+          isUndone: false,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!latestStroke) {
+        return;
+      }
+
+      await prisma.stroke.update({
+        where: { id: latestStroke.id },
+        data: { isUndone: true },
+      });
+
+      const activeStrokes = await fetchActiveStrokes(roomId);
+
+      io.to(roomId).emit("stroke-undone", activeStrokes);
+    } catch (error) {
+      console.error("Failed to undo stroke:", error);
+    }
+  });
+
+  socket.on("redo-stroke", async ({ roomId }: RoomPayload) => {
+    if (!roomId) {
+      return;
+    }
+
+    try {
+      const latestUndoneStroke = await prisma.stroke.findFirst({
+        where: {
+          roomId,
+          isUndone: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!latestUndoneStroke) {
+        return;
+      }
+
+      await prisma.stroke.update({
+        where: { id: latestUndoneStroke.id },
+        data: { isUndone: false },
+      });
+
+      const activeStrokes = await fetchActiveStrokes(roomId);
+
+      io.to(roomId).emit("stroke-redone", activeStrokes);
+    } catch (error) {
+      console.error("Failed to redo stroke:", error);
+    }
   });
 
   socket.on("clear-canvas", async ({ roomId }: ClearCanvasPayload) => {
