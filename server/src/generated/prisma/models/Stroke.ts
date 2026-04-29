@@ -41,6 +41,7 @@ export type StrokeMinAggregateOutputType = {
   brushSize: number | null
   isUndone: boolean | null
   createdAt: Date | null
+  updatedAt: Date | null
 }
 
 export type StrokeMaxAggregateOutputType = {
@@ -50,6 +51,7 @@ export type StrokeMaxAggregateOutputType = {
   brushSize: number | null
   isUndone: boolean | null
   createdAt: Date | null
+  updatedAt: Date | null
 }
 
 export type StrokeCountAggregateOutputType = {
@@ -60,6 +62,7 @@ export type StrokeCountAggregateOutputType = {
   brushSize: number
   isUndone: number
   createdAt: number
+  updatedAt: number
   _all: number
 }
 
@@ -79,6 +82,7 @@ export type StrokeMinAggregateInputType = {
   brushSize?: true
   isUndone?: true
   createdAt?: true
+  updatedAt?: true
 }
 
 export type StrokeMaxAggregateInputType = {
@@ -88,6 +92,7 @@ export type StrokeMaxAggregateInputType = {
   brushSize?: true
   isUndone?: true
   createdAt?: true
+  updatedAt?: true
 }
 
 export type StrokeCountAggregateInputType = {
@@ -98,6 +103,7 @@ export type StrokeCountAggregateInputType = {
   brushSize?: true
   isUndone?: true
   createdAt?: true
+  updatedAt?: true
   _all?: true
 }
 
@@ -195,6 +201,7 @@ export type StrokeGroupByOutputType = {
   brushSize: number
   isUndone: boolean
   createdAt: Date
+  updatedAt: Date
   _count: StrokeCountAggregateOutputType | null
   _avg: StrokeAvgAggregateOutputType | null
   _sum: StrokeSumAggregateOutputType | null
@@ -228,6 +235,7 @@ export type StrokeWhereInput = {
   brushSize?: Prisma.IntFilter<"Stroke"> | number
   isUndone?: Prisma.BoolFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
+  updatedAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
 }
 
 export type StrokeOrderByWithRelationInput = {
@@ -238,6 +246,7 @@ export type StrokeOrderByWithRelationInput = {
   brushSize?: Prisma.SortOrder
   isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type StrokeWhereUniqueInput = Prisma.AtLeast<{
@@ -251,6 +260,7 @@ export type StrokeWhereUniqueInput = Prisma.AtLeast<{
   brushSize?: Prisma.IntFilter<"Stroke"> | number
   isUndone?: Prisma.BoolFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
+  updatedAt?: Prisma.DateTimeFilter<"Stroke"> | Date | string
 }, "id">
 
 export type StrokeOrderByWithAggregationInput = {
@@ -261,6 +271,7 @@ export type StrokeOrderByWithAggregationInput = {
   brushSize?: Prisma.SortOrder
   isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
   _count?: Prisma.StrokeCountOrderByAggregateInput
   _avg?: Prisma.StrokeAvgOrderByAggregateInput
   _max?: Prisma.StrokeMaxOrderByAggregateInput
@@ -279,6 +290,7 @@ export type StrokeScalarWhereWithAggregatesInput = {
   brushSize?: Prisma.IntWithAggregatesFilter<"Stroke"> | number
   isUndone?: Prisma.BoolWithAggregatesFilter<"Stroke"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Stroke"> | Date | string
+  updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Stroke"> | Date | string
 }
 
 export type StrokeCreateInput = {
@@ -289,6 +301,7 @@ export type StrokeCreateInput = {
   brushSize: number
   isUndone?: boolean
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type StrokeUncheckedCreateInput = {
@@ -299,6 +312,7 @@ export type StrokeUncheckedCreateInput = {
   brushSize: number
   isUndone?: boolean
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type StrokeUpdateInput = {
@@ -309,6 +323,7 @@ export type StrokeUpdateInput = {
   brushSize?: Prisma.IntFieldUpdateOperationsInput | number
   isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeUncheckedUpdateInput = {
@@ -319,6 +334,7 @@ export type StrokeUncheckedUpdateInput = {
   brushSize?: Prisma.IntFieldUpdateOperationsInput | number
   isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeCreateManyInput = {
@@ -329,6 +345,7 @@ export type StrokeCreateManyInput = {
   brushSize: number
   isUndone?: boolean
   createdAt?: Date | string
+  updatedAt?: Date | string
 }
 
 export type StrokeUpdateManyMutationInput = {
@@ -339,6 +356,7 @@ export type StrokeUpdateManyMutationInput = {
   brushSize?: Prisma.IntFieldUpdateOperationsInput | number
   isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeUncheckedUpdateManyInput = {
@@ -349,6 +367,7 @@ export type StrokeUncheckedUpdateManyInput = {
   brushSize?: Prisma.IntFieldUpdateOperationsInput | number
   isUndone?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
 export type StrokeCountOrderByAggregateInput = {
@@ -359,6 +378,7 @@ export type StrokeCountOrderByAggregateInput = {
   brushSize?: Prisma.SortOrder
   isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type StrokeAvgOrderByAggregateInput = {
@@ -372,6 +392,7 @@ export type StrokeMaxOrderByAggregateInput = {
   brushSize?: Prisma.SortOrder
   isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type StrokeMinOrderByAggregateInput = {
@@ -381,6 +402,7 @@ export type StrokeMinOrderByAggregateInput = {
   brushSize?: Prisma.SortOrder
   isUndone?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
+  updatedAt?: Prisma.SortOrder
 }
 
 export type StrokeSumOrderByAggregateInput = {
@@ -417,6 +439,7 @@ export type StrokeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   brushSize?: boolean
   isUndone?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -427,6 +450,7 @@ export type StrokeSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   brushSize?: boolean
   isUndone?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -437,6 +461,7 @@ export type StrokeSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   brushSize?: boolean
   isUndone?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
 }, ExtArgs["result"]["stroke"]>
 
 export type StrokeSelectScalar = {
@@ -447,9 +472,10 @@ export type StrokeSelectScalar = {
   brushSize?: boolean
   isUndone?: boolean
   createdAt?: boolean
+  updatedAt?: boolean
 }
 
-export type StrokeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "roomId" | "points" | "color" | "brushSize" | "isUndone" | "createdAt", ExtArgs["result"]["stroke"]>
+export type StrokeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "roomId" | "points" | "color" | "brushSize" | "isUndone" | "createdAt" | "updatedAt", ExtArgs["result"]["stroke"]>
 
 export type $StrokePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Stroke"
@@ -462,6 +488,7 @@ export type $StrokePayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     brushSize: number
     isUndone: boolean
     createdAt: Date
+    updatedAt: Date
   }, ExtArgs["result"]["stroke"]>
   composites: {}
 }
@@ -892,6 +919,7 @@ export interface StrokeFieldRefs {
   readonly brushSize: Prisma.FieldRef<"Stroke", 'Int'>
   readonly isUndone: Prisma.FieldRef<"Stroke", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"Stroke", 'DateTime'>
+  readonly updatedAt: Prisma.FieldRef<"Stroke", 'DateTime'>
 }
     
 

@@ -524,7 +524,8 @@ export const StrokeScalarFieldEnum = {
   color: 'color',
   brushSize: 'brushSize',
   isUndone: 'isUndone',
-  createdAt: 'createdAt'
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
 } as const
 
 export type StrokeScalarFieldEnum = (typeof StrokeScalarFieldEnum)[keyof typeof StrokeScalarFieldEnum]
