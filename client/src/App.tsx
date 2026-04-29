@@ -62,7 +62,24 @@ type RoomLeftPayload = {
   roomId: string;
 };
 
+type AuthUser = {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AuthResponse = {
+  accessToken: string;
+  refreshToken: string;
+  user: AuthUser;
+};
+
 const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
+const API_BASE_URL = "http://localhost:5000";
+const ACCESS_TOKEN_STORAGE_KEY = "synapse_access_token";
+const REFRESH_TOKEN_STORAGE_KEY = "synapse_refresh_token";
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -83,6 +100,13 @@ function App() {
   const undoneStrokesRef = useRef<StrokePayload[]>([]);
   const pendingLocalStrokesRef = useRef<StrokePayload[]>([]);
   const pendingServerUndoMatchesRef = useRef<string[]>([]);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authStatus, setAuthStatus] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
   const resetRoomState = (statusMessage: string) => {
     joinedRoomRef.current = "";
@@ -99,6 +123,78 @@ function App() {
   useEffect(() => {
     joinedRoomRef.current = joinedRoom;
   }, [joinedRoom]);
+
+  const saveTokens = (accessToken: string, refreshToken: string) => {
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
+    localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken);
+  };
+
+  const clearTokens = () => {
+    localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  };
+
+  const fetchCurrentUser = async (accessToken: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error("Failed to fetch current user");
+    }
+    const data = (await response.json()) as { user: AuthUser };
+    return data.user;
+  };
+
+  const tryRefreshAccessToken = async () => {
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+    if (!storedRefreshToken) {
+      return null;
+    }
+
+    const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: storedRefreshToken }),
+    });
+    if (!refreshResponse.ok) {
+      return null;
+    }
+
+    const refreshData = (await refreshResponse.json()) as { accessToken: string };
+    localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, refreshData.accessToken);
+    return refreshData.accessToken;
+  };
+
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const storedAccessToken = localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
+      if (!storedAccessToken) {
+        return;
+      }
+
+      try {
+        const user = await fetchCurrentUser(storedAccessToken);
+        setAuthUser(user);
+      } catch {
+        const refreshedAccessToken = await tryRefreshAccessToken();
+        if (!refreshedAccessToken) {
+          clearTokens();
+          return;
+        }
+
+        try {
+          const user = await fetchCurrentUser(refreshedAccessToken);
+          setAuthUser(user);
+        } catch {
+          clearTokens();
+        }
+      }
+    };
+
+    void initializeAuth();
+  }, []);
 
   useEffect(() => {
     const newSocket: Socket = io("http://localhost:5000", {
@@ -588,6 +684,89 @@ function App() {
     context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
+  const handleAuthSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedEmail = authEmail.trim().toLowerCase();
+    const trimmedUsername = authUsername.trim();
+
+    if (!trimmedEmail || !authPassword || (authMode === "signup" && !trimmedUsername)) {
+      setAuthStatus("Please fill all required fields");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthStatus("");
+
+    try {
+      if (authMode === "signup") {
+        const signupResponse = await fetch(`${API_BASE_URL}/auth/signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: trimmedUsername,
+            email: trimmedEmail,
+            password: authPassword,
+          }),
+        });
+
+        if (!signupResponse.ok) {
+          const errorData = (await signupResponse.json()) as { message?: string };
+          throw new Error(errorData.message || "Signup failed");
+        }
+      }
+
+      const loginResponse = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: authPassword,
+        }),
+      });
+
+      if (!loginResponse.ok) {
+        const errorData = (await loginResponse.json()) as { message?: string };
+        throw new Error(errorData.message || "Login failed");
+      }
+
+      const authData = (await loginResponse.json()) as AuthResponse;
+      saveTokens(authData.accessToken, authData.refreshToken);
+      setAuthUser(authData.user);
+      setAuthPassword("");
+      setAuthStatus(
+        authMode === "signup"
+          ? "Account created and logged in"
+          : "Logged in successfully",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Authentication failed";
+      setAuthStatus(message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+
+    if (storedRefreshToken) {
+      try {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: storedRefreshToken }),
+        });
+      } catch {
+        // Logout on client side should still succeed even if request fails.
+      }
+    }
+
+    clearTokens();
+    setAuthUser(null);
+    setAuthPassword("");
+    setAuthStatus("Logged out");
+  };
+
   const displayedUsers = Array.from(
     { length: Math.max(joinedRoom ? roomUsersCount : 0, 1) },
     (_, index) => ({
@@ -622,6 +801,64 @@ function App() {
           </div>
 
           <div className="sidebar__section sidebar__section--controls">
+            <p className="sidebar__label">Authentication</p>
+            <div className="auth-panel">
+              {authUser ? (
+                <>
+                  <p className="sidebar__meta">Logged in as {authUser.username}</p>
+                  <button type="button" className="auth-button auth-button--logout" onClick={handleLogout}>
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <form className="auth-form" onSubmit={handleAuthSubmit}>
+                  <div className="auth-toggle">
+                    <button
+                      type="button"
+                      className={`auth-toggle__button${authMode === "login" ? " auth-toggle__button--active" : ""}`}
+                      onClick={() => setAuthMode("login")}
+                    >
+                      Login
+                    </button>
+                    <button
+                      type="button"
+                      className={`auth-toggle__button${authMode === "signup" ? " auth-toggle__button--active" : ""}`}
+                      onClick={() => setAuthMode("signup")}
+                    >
+                      Signup
+                    </button>
+                  </div>
+                  {authMode === "signup" ? (
+                    <input
+                      type="text"
+                      value={authUsername}
+                      onChange={(event) => setAuthUsername(event.target.value)}
+                      placeholder="Username"
+                      className="room-input"
+                    />
+                  ) : null}
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    placeholder="Email"
+                    className="room-input"
+                  />
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Password"
+                    className="room-input"
+                  />
+                  <button type="submit" className="auth-button" disabled={authLoading}>
+                    {authLoading ? "Please wait..." : authMode === "signup" ? "Create account" : "Login"}
+                  </button>
+                </form>
+              )}
+              {authStatus ? <p className="sidebar__meta">{authStatus}</p> : null}
+            </div>
+
             <p className="sidebar__label">Join a room</p>
             <div className="room-controls">
               <input

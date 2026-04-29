@@ -3,6 +3,9 @@ import express from "express";
 import http from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import bcrypt from "bcrypt";
+import jwt, { type JwtPayload } from "jsonwebtoken";
+import { randomBytes } from "crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "./generated/prisma/client";
 
@@ -68,12 +71,72 @@ type StrokeSocketPayload = {
 };
 
 type StrokeSavedPayload = StrokeSocketPayload;
+type AuthUserPayload = {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 const MAX_ROOM_USERS = 20;
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+const REFRESH_TOKEN_TTL_DAYS = 7;
+const SALT_ROUNDS = 10;
 
 const app = express();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+const accessSecret = process.env.JWT_ACCESS_SECRET;
+const refreshSecret = process.env.JWT_REFRESH_SECRET;
+
+if (!accessSecret || !refreshSecret) {
+  throw new Error("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set");
+}
+
+const toAuthUserPayload = (user: {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: Date;
+  updatedAt: Date;
+}): AuthUserPayload => {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+  };
+};
+
+const createAccessToken = (user: { id: string; email: string }) => {
+  return jwt.sign(
+    { sub: user.id, email: user.email },
+    accessSecret,
+    { expiresIn: ACCESS_TOKEN_TTL_SECONDS },
+  );
+};
+
+const createRefreshTokenValue = (userId: string) => {
+  const randomPart = randomBytes(40).toString("hex");
+  return jwt.sign(
+    { sub: userId, nonce: randomPart },
+    refreshSecret,
+    { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` },
+  );
+};
+
+const parseBearerToken = (authorizationHeader?: string) => {
+  if (!authorizationHeader) {
+    return null;
+  }
+  const [scheme, token] = authorizationHeader.split(" ");
+  if (scheme !== "Bearer" || !token) {
+    return null;
+  }
+  return token;
+};
 
 const emitRoomUsersUpdated = (roomId: string) => {
   const room = io.sockets.adapter.rooms.get(roomId);
@@ -114,6 +177,174 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+app.post("/auth/signup", async (req, res) => {
+  const { username, email, password } = req.body ?? {};
+  const normalizedUsername = typeof username === "string" ? username.trim() : "";
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedPassword = typeof password === "string" ? password : "";
+
+  if (!normalizedUsername || !normalizedEmail || !normalizedPassword) {
+    res.status(400).json({ message: "username, email, and password are required" });
+    return;
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(normalizedPassword, SALT_ROUNDS);
+    const createdUser = await prisma.user.create({
+      data: {
+        username: normalizedUsername,
+        email: normalizedEmail,
+        passwordHash,
+      },
+    });
+
+    res.status(201).json({ user: toAuthUserPayload(createdUser) });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      res.status(409).json({ message: "Username or email already exists" });
+      return;
+    }
+    console.error("Failed to sign up:", error);
+    res.status(500).json({ message: "Failed to create account" });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body ?? {};
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedPassword = typeof password === "string" ? password : "";
+
+  if (!normalizedEmail || !normalizedPassword) {
+    res.status(400).json({ message: "email and password are required" });
+    return;
+  }
+
+  try {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (!existingUser) {
+      res.status(401).json({ message: "Invalid credentials" });
+      return;
+    }
+
+    const passwordMatches = await bcrypt.compare(normalizedPassword, existingUser.passwordHash);
+    if (!passwordMatches) {
+      res.status(401).json({ message: "Invalid credentials" });
+      return;
+    }
+
+    const accessToken = createAccessToken(existingUser);
+    const refreshToken = createRefreshTokenValue(existingUser.id);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    await prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: existingUser.id,
+        expiresAt,
+      },
+    });
+
+    res.json({
+      accessToken,
+      refreshToken,
+      user: toAuthUserPayload(existingUser),
+    });
+  } catch (error) {
+    console.error("Failed to login:", error);
+    res.status(500).json({ message: "Failed to login" });
+  }
+});
+
+app.post("/auth/refresh", async (req, res) => {
+  const { refreshToken } = req.body ?? {};
+  const tokenValue = typeof refreshToken === "string" ? refreshToken : "";
+  if (!tokenValue) {
+    res.status(400).json({ message: "refreshToken is required" });
+    return;
+  }
+
+  try {
+    jwt.verify(tokenValue, refreshSecret);
+  } catch {
+    res.status(401).json({ message: "Invalid refresh token" });
+    return;
+  }
+
+  try {
+    const storedToken = await prisma.refreshToken.findUnique({
+      where: { token: tokenValue },
+      include: { user: true },
+    });
+    if (!storedToken || storedToken.expiresAt <= new Date()) {
+      res.status(401).json({ message: "Refresh token expired or invalid" });
+      return;
+    }
+
+    const accessToken = createAccessToken(storedToken.user);
+    res.json({ accessToken });
+  } catch (error) {
+    console.error("Failed to refresh access token:", error);
+    res.status(500).json({ message: "Failed to refresh token" });
+  }
+});
+
+app.post("/auth/logout", async (req, res) => {
+  const { refreshToken } = req.body ?? {};
+  const tokenValue = typeof refreshToken === "string" ? refreshToken : "";
+  if (!tokenValue) {
+    res.status(400).json({ message: "refreshToken is required" });
+    return;
+  }
+
+  try {
+    await prisma.refreshToken.deleteMany({
+      where: { token: tokenValue },
+    });
+    res.status(204).send();
+  } catch (error) {
+    console.error("Failed to logout:", error);
+    res.status(500).json({ message: "Failed to logout" });
+  }
+});
+
+app.get("/auth/me", async (req, res) => {
+  const token = parseBearerToken(req.headers.authorization);
+  if (!token) {
+    res.status(401).json({ message: "Missing or invalid authorization header" });
+    return;
+  }
+
+  let payload: JwtPayload;
+  try {
+    payload = jwt.verify(token, accessSecret) as JwtPayload;
+  } catch {
+    res.status(401).json({ message: "Invalid access token" });
+    return;
+  }
+
+  const userId = typeof payload.sub === "string" ? payload.sub : "";
+  if (!userId) {
+    res.status(401).json({ message: "Invalid access token payload" });
+    return;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      res.status(404).json({ message: "User not found" });
+      return;
+    }
+    res.json({ user: toAuthUserPayload(user) });
+  } catch (error) {
+    console.error("Failed to fetch current user:", error);
+    res.status(500).json({ message: "Failed to fetch current user" });
+  }
+});
 
 // simple test route
 app.get("/health", (req, res) => {
