@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
@@ -8,8 +8,9 @@ import LoginPage from "./LoginPage.tsx";
 import SignupPage from "./SignupPage.tsx";
 import {
   API_BASE_URL,
-  REFRESH_TOKEN_STORAGE_KEY,
   clearStoredAuth,
+  ensureValidAccessToken,
+  getStoredRefreshToken,
   isAuthenticated,
 } from "./auth";
 
@@ -44,9 +45,33 @@ createRoot(document.getElementById('root')!).render(
 
 function WhiteboardRoute() {
   const navigate = useNavigate();
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const validateSession = async () => {
+      const hasValidAccessToken = await ensureValidAccessToken();
+      if (!hasValidAccessToken) {
+        clearStoredAuth();
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (isMounted) {
+        setIsReady(true);
+      }
+    };
+
+    void validateSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
 
   const handleLogout = async () => {
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+    const refreshToken = getStoredRefreshToken();
     if (refreshToken) {
       try {
         await fetch(`${API_BASE_URL}/auth/logout`, {
@@ -62,6 +87,10 @@ function WhiteboardRoute() {
     clearStoredAuth();
     navigate("/login", { replace: true });
   };
+
+  if (!isReady) {
+    return null;
+  }
 
   return <App onLogout={handleLogout} />;
 }

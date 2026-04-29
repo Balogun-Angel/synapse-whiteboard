@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import type { Socket } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import cors from "cors";
 import bcrypt from "bcrypt";
@@ -28,6 +29,10 @@ type RoomJoinedPayload = {
   roomId: string;
   message: string;
   count: number;
+  users: {
+    userId: string;
+    connectionCount: number;
+  }[];
 };
 
 type DrawLivePayload = {
@@ -55,6 +60,10 @@ type UndoStrokePayload = RoomPayload & {
 type RoomUsersUpdatedPayload = {
   roomId: string;
   count: number;
+  users: {
+    userId: string;
+    connectionCount: number;
+  }[];
 };
 
 type RoomLeftPayload = {
@@ -140,12 +149,52 @@ const parseBearerToken = (authorizationHeader?: string) => {
   return token;
 };
 
+const getSocketUserId = (socket: Socket) => {
+  const socketData = socket.data as { userId?: string | null };
+  return socketData.userId ?? null;
+};
+
+const getPresenceKeyForSocket = (socket: Socket) => {
+  const userId = getSocketUserId(socket);
+  return userId ? `user:${userId}` : `guest:${socket.id}`;
+};
+
+const getRoomPresence = (roomId: string) => {
+  const socketIds = io.sockets.adapter.rooms.get(roomId);
+  if (!socketIds) {
+    return [];
+  }
+
+  const presenceByUser = new Map<string, { userId: string; connectionCount: number }>();
+
+  for (const socketId of socketIds) {
+    const roomSocket = io.sockets.sockets.get(socketId);
+    if (!roomSocket) {
+      continue;
+    }
+
+    const presenceKey = getPresenceKeyForSocket(roomSocket);
+    const currentPresence = presenceByUser.get(presenceKey);
+    if (currentPresence) {
+      currentPresence.connectionCount += 1;
+      continue;
+    }
+
+    presenceByUser.set(presenceKey, {
+      userId: presenceKey,
+      connectionCount: 1,
+    });
+  }
+
+  return Array.from(presenceByUser.values());
+};
+
 const emitRoomUsersUpdated = (roomId: string) => {
-  const room = io.sockets.adapter.rooms.get(roomId);
-  const count = room?.size ?? 0;
+  const users = getRoomPresence(roomId);
   io.to(roomId).emit("room-users-updated", {
     roomId,
-    count,
+    count: users.length,
+    users,
   } satisfies RoomUsersUpdatedPayload);
 };
 
@@ -394,6 +443,29 @@ const setupRedisAdapter = async () => {
 
 void setupRedisAdapter();
 
+io.use((socket, next) => {
+  const handshakeToken = socket.handshake.auth?.token;
+  const token =
+    typeof handshakeToken === "string" && handshakeToken
+      ? handshakeToken
+      : parseBearerToken(socket.handshake.headers.authorization);
+
+  if (!token) {
+    (socket.data as { userId?: string | null }).userId = null;
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(token, accessSecret) as JwtPayload;
+    const userId = typeof payload.sub === "string" ? payload.sub : null;
+    (socket.data as { userId?: string | null }).userId = userId;
+    next();
+  } catch {
+    (socket.data as { userId?: string | null }).userId = null;
+    next();
+  }
+});
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
   socket.data.currentRoom = null as string | null;
@@ -411,10 +483,24 @@ io.on("connection", (socket) => {
     }
 
     const previousRoom = socket.data.currentRoom as string | null;
+    const thisSocketPresenceKey = getPresenceKeyForSocket(socket);
 
     if (previousRoom !== trimmedRoomId) {
-      const roomSize = io.sockets.adapter.rooms.get(trimmedRoomId)?.size ?? 0;
-      if (roomSize >= MAX_ROOM_USERS) {
+      const usersInTargetRoom = getRoomPresence(trimmedRoomId);
+      const uniqueUsersCount = usersInTargetRoom.length;
+      const alreadyPresentInRoom = usersInTargetRoom.some((user) => user.userId === thisSocketPresenceKey);
+
+      // Allow only one active tab per authenticated user in the same room.
+      // Keep app access available, but prompt user to close the extra tab.
+      if (thisSocketPresenceKey.startsWith("user:") && alreadyPresentInRoom) {
+        socket.emit("room-error", {
+          message:
+            "You already joined this room in another tab. Please close the other tab and try again.",
+        });
+        return;
+      }
+
+      if (uniqueUsersCount >= MAX_ROOM_USERS && !alreadyPresentInRoom) {
         socket.emit("room-error", { message: "Sorry, this room is full." });
         return;
       }
@@ -422,28 +508,23 @@ io.on("connection", (socket) => {
 
     if (previousRoom && previousRoom !== trimmedRoomId) {
       socket.leave(previousRoom);
-      const oldRoomCount = io.sockets.adapter.rooms.get(previousRoom)?.size ?? 0;
-      io.to(previousRoom).emit("room-users-updated", {
-        roomId: previousRoom,
-        count: oldRoomCount,
-      } satisfies RoomUsersUpdatedPayload);
+      emitRoomUsersUpdated(previousRoom);
     }
 
     socket.join(trimmedRoomId);
     socket.data.currentRoom = trimmedRoomId;
-    const count = io.sockets.adapter.rooms.get(trimmedRoomId)?.size ?? 0;
+    const usersInRoom = getRoomPresence(trimmedRoomId);
+    const count = usersInRoom.length;
     console.log(`Socket ${socket.id} joined room ${trimmedRoomId}`);
 
     socket.emit("room-joined", {
       roomId: trimmedRoomId,
       message: `Joined room ${trimmedRoomId}`,
       count,
+      users: usersInRoom,
     } satisfies RoomJoinedPayload);
 
-    io.to(trimmedRoomId).emit("room-users-updated", {
-      roomId: trimmedRoomId,
-      count,
-    } satisfies RoomUsersUpdatedPayload);
+    emitRoomUsersUpdated(trimmedRoomId);
 
     try {
       const strokes = await fetchActiveStrokes(trimmedRoomId);
@@ -638,35 +719,18 @@ io.on("connection", (socket) => {
     socket.leave(currentRoom);
     socket.data.currentRoom = null;
 
-    const count = io.sockets.adapter.rooms.get(currentRoom)?.size ?? 0;
-    io.to(currentRoom).emit("room-users-updated", {
-      roomId: currentRoom,
-      count,
-    } satisfies RoomUsersUpdatedPayload);
+    emitRoomUsersUpdated(currentRoom);
     socket.emit("room-left", {
       roomId: currentRoom,
     } satisfies RoomLeftPayload);
     console.log(`Socket ${socket.id} left room ${currentRoom}`);
   });
 
-  socket.on("disconnecting", () => {
-    const currentRoom = socket.data.currentRoom as string | null;
-    if (!currentRoom) {
-      return;
-    }
-
-    const countAfterDisconnect = Math.max(
-      0,
-      (io.sockets.adapter.rooms.get(currentRoom)?.size ?? 1) - 1,
-    );
-
-    socket.to(currentRoom).emit("room-users-updated", {
-      roomId: currentRoom,
-      count: countAfterDisconnect,
-    } satisfies RoomUsersUpdatedPayload);
-  });
-
   socket.on("disconnect", () => {
+    const currentRoom = socket.data.currentRoom as string | null;
+    if (currentRoom) {
+      emitRoomUsersUpdated(currentRoom);
+    }
     socket.data.currentRoom = null;
     console.log("User disconnected:", socket.id);
   });
