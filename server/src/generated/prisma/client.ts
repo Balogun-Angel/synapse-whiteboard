@@ -44,3 +44,13 @@ export { Prisma }
  * 
  */
 export type Stroke = Prisma.StrokeModel
+/**
+ * Model User
+ * 
+ */
+export type User = Prisma.UserModel
+/**
+ * Model RefreshToken
+ * 
+ */
+export type RefreshToken = Prisma.RefreshTokenModel
