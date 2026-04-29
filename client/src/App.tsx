@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import { ACCESS_TOKEN_STORAGE_KEY } from "./auth";
 import "./App.css";
 
 type RoomJoinedPayload = {
   roomId: string;
   message: string;
   count: number;
+  users: RoomUserPresence[];
 };
 
 type RoomErrorPayload = {
@@ -56,10 +58,16 @@ type UndoStrokePayload = RoomPayload & {
 type RoomUsersUpdatedPayload = {
   roomId: string;
   count: number;
+  users: RoomUserPresence[];
 };
 
 type RoomLeftPayload = {
   roomId: string;
+};
+
+type RoomUserPresence = {
+  userId: string;
+  connectionCount: number;
 };
 
 const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
@@ -76,6 +84,7 @@ function App({ onLogout }: AppProps) {
   const [joinedRoom, setJoinedRoom] = useState("");
   const [roomStatus, setRoomStatus] = useState("");
   const [roomUsersCount, setRoomUsersCount] = useState(0);
+  const [roomUsers, setRoomUsers] = useState<RoomUserPresence[]>([]);
   const [brushColor, setBrushColor] = useState("#111111");
   const [brushSize, setBrushSize] = useState(4);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -87,11 +96,33 @@ function App({ onLogout }: AppProps) {
   const undoneStrokesRef = useRef<StrokePayload[]>([]);
   const pendingLocalStrokesRef = useRef<StrokePayload[]>([]);
   const pendingServerUndoMatchesRef = useRef<string[]>([]);
+  const currentUserPresenceKeyRef = useRef("");
+
+  const roomUsersRefineAndSort = ({
+    users,
+    currentUserPresenceKey,
+  }: {
+    users: RoomUserPresence[];
+    currentUserPresenceKey: string;
+  }) => {
+    return [...users].sort((firstUser, secondUser) => {
+      const firstIsCurrentUser = firstUser.userId === currentUserPresenceKey;
+      const secondIsCurrentUser = secondUser.userId === currentUserPresenceKey;
+      if (firstIsCurrentUser && !secondIsCurrentUser) {
+        return -1;
+      }
+      if (!firstIsCurrentUser && secondIsCurrentUser) {
+        return 1;
+      }
+      return firstUser.userId.localeCompare(secondUser.userId);
+    });
+  };
 
   const resetRoomState = (statusMessage: string) => {
     joinedRoomRef.current = "";
     setJoinedRoom("");
     setRoomUsersCount(0);
+    setRoomUsers([]);
     activeStrokesRef.current = [];
     undoneStrokesRef.current = [];
     pendingLocalStrokesRef.current = [];
@@ -105,8 +136,25 @@ function App({ onLogout }: AppProps) {
   }, [joinedRoom]);
 
   useEffect(() => {
+    const authUserRaw = localStorage.getItem("authUser");
+    if (authUserRaw) {
+      try {
+        const authUser = JSON.parse(authUserRaw) as { id?: string };
+        if (typeof authUser.id === "string" && authUser.id) {
+          currentUserPresenceKeyRef.current = `user:${authUser.id}`;
+        }
+      } catch {
+        currentUserPresenceKeyRef.current = "";
+      }
+    }
+
+    const accessToken =
+      localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
+      localStorage.getItem("synapse_access_token");
+
     const newSocket: Socket = io("http://localhost:5000", {
       transports: ["websocket", "polling"],
+      auth: { token: accessToken },
     });
     socketRef.current = newSocket;
     const handleWindowMouseUp = () => {
@@ -128,11 +176,17 @@ function App({ onLogout }: AppProps) {
       console.log("Disconnected from server");
     });
 
-    newSocket.on("room-joined", ({ roomId, message, count }: RoomJoinedPayload) => {
+    newSocket.on("room-joined", ({ roomId, message, count, users }: RoomJoinedPayload) => {
       joinedRoomRef.current = roomId;
       setJoinedRoom(roomId);
       setRoomStatus(message);
       setRoomUsersCount(count);
+      setRoomUsers(
+        roomUsersRefineAndSort({
+          users,
+          currentUserPresenceKey: currentUserPresenceKeyRef.current,
+        }),
+      );
     });
 
     newSocket.on("room-error", ({ message }: RoomErrorPayload) => {
@@ -240,9 +294,15 @@ function App({ onLogout }: AppProps) {
       clearCanvasLocal();
     });
 
-    newSocket.on("room-users-updated", ({ roomId, count }: RoomUsersUpdatedPayload) => {
+    newSocket.on("room-users-updated", ({ roomId, count, users }: RoomUsersUpdatedPayload) => {
       if (roomId === joinedRoomRef.current) {
         setRoomUsersCount(count);
+        setRoomUsers(
+          roomUsersRefineAndSort({
+            users,
+            currentUserPresenceKey: currentUserPresenceKeyRef.current,
+          }),
+        );
       }
     });
 
@@ -592,13 +652,15 @@ function App({ onLogout }: AppProps) {
     context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  const displayedUsers = Array.from(
-    { length: Math.max(joinedRoom ? roomUsersCount : 0, 1) },
-    (_, index) => ({
-      id: index,
-      label: index === 0 ? "You" : `User ${index + 1}`,
-    }),
-  );
+  const displayedUsers = roomUsers.length
+    ? roomUsers.map((user, index) => ({
+        id: user.userId,
+        label:
+          user.userId === currentUserPresenceKeyRef.current
+            ? "You"
+            : `User ${index + 1}`,
+      }))
+    : [{ id: "you-fallback", label: "You" }];
 
   return (
     <div className="app-shell">
@@ -621,7 +683,7 @@ function App({ onLogout }: AppProps) {
               {displayedUsers.map((user, index) => (
                 <div
                   key={user.id}
-                  className={`user-row${index === 0 ? " user-row--active" : ""}`}
+                  className={`user-row${user.id === currentUserPresenceKeyRef.current || (index === 0 && displayedUsers.length === 1) ? " user-row--active" : ""}`}
                 >
                   <div className="user-avatar">{user.label.charAt(0)}</div>
                   <span className="user-name">{user.label}</span>
