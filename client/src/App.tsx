@@ -21,6 +21,19 @@ type DrawPayload = {
   roomId: string;
 };
 
+type StrokePayload = DrawPayload & {
+  id: string;
+  createdAt: string;
+};
+
+type ClearCanvasPayload = {
+  roomId: string;
+};
+
+type LeaveRoomPayload = {
+  roomId: string;
+};
+
 function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [socketId, setSocketId] = useState("");
@@ -33,6 +46,11 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const joinedRoomRef = useRef("");
+
+  useEffect(() => {
+    joinedRoomRef.current = joinedRoom;
+  }, [joinedRoom]);
 
   useEffect(() => {
     const newSocket: Socket = io("http://localhost:5000", {
@@ -86,6 +104,36 @@ function App() {
       drawLine(context, prevX, prevY, x, y, color, brushSize);
     });
 
+    newSocket.on("load-strokes", (strokes: StrokePayload[]) => {
+      clearCanvasLocal();
+
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        return;
+      }
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        return;
+      }
+
+      for (const stroke of strokes) {
+        drawLine(
+          context,
+          stroke.prevX,
+          stroke.prevY,
+          stroke.x,
+          stroke.y,
+          stroke.color,
+          stroke.brushSize,
+        );
+      }
+    });
+
+    newSocket.on("clear-canvas", () => {
+      clearCanvasLocal();
+    });
+
     return () => {
       newSocket.off("connect");
       newSocket.off("disconnect");
@@ -93,6 +141,8 @@ function App() {
       newSocket.off("room-error");
       newSocket.off("connect_error");
       newSocket.off("draw");
+      newSocket.off("load-strokes");
+      newSocket.off("clear-canvas");
       newSocket.close();
       window.removeEventListener("mouseup", handleWindowMouseUp);
       socketRef.current = null;
@@ -108,6 +158,14 @@ function App() {
     color: string,
     size: number,
   ) => {
+    if (prevX === x && prevY === y) {
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(x, y, Math.max(1, size / 2), 0, Math.PI * 2);
+      context.fill();
+      return;
+    }
+
     context.beginPath();
     context.moveTo(prevX, prevY);
     context.lineTo(x, y);
@@ -118,11 +176,24 @@ function App() {
     context.stroke();
   };
 
+  const leaveCurrentRoom = (statusMessage: string) => {
+    const currentRoom = joinedRoomRef.current;
+    const socket = socketRef.current;
+
+    if (socket && currentRoom) {
+      socket.emit("leave-room", { roomId: currentRoom } satisfies LeaveRoomPayload);
+    }
+
+    setJoinedRoom("");
+    clearCanvasLocal();
+    setRoomStatus(statusMessage);
+  };
+
   const handleJoinRoom = () => {
     const trimmedRoomId = roomInput.trim();
 
     if (!trimmedRoomId) {
-      setRoomStatus("Please enter a room ID");
+      leaveCurrentRoom("Please enter a room ID");
       return;
     }
 
@@ -170,6 +241,19 @@ function App() {
     context.beginPath();
     context.arc(position.x, position.y, Math.max(1, brushSize / 2), 0, Math.PI * 2);
     context.fill();
+
+    const socket = socketRef.current;
+    if (socket && joinedRoom) {
+      socket.emit("draw", {
+        prevX: position.x,
+        prevY: position.y,
+        x: position.x,
+        y: position.y,
+        color: brushColor,
+        brushSize,
+        roomId: joinedRoom,
+      } satisfies DrawPayload);
+    }
   };
 
   const draw = (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -222,6 +306,20 @@ function App() {
   };
 
   const clearCanvas = () => {
+    if (!joinedRoom) {
+      setRoomStatus("Join a room before clearing the canvas");
+      return;
+    }
+
+    clearCanvasLocal();
+
+    const socket = socketRef.current;
+    if (socket) {
+      socket.emit("clear-canvas", { roomId: joinedRoom } satisfies ClearCanvasPayload);
+    }
+  };
+
+  const clearCanvasLocal = () => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;

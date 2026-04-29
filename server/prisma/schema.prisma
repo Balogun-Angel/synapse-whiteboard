@@ -5,9 +5,21 @@
 
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model Stroke {
+  id        String   @id @default(cuid())
+  roomId    String
+  prevX     Float
+  prevY     Float
+  x         Float
+  y         Float
+  color     String
+  brushSize Float
+  createdAt DateTime @default(now())
 }
