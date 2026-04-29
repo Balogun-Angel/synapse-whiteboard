@@ -16,6 +16,13 @@ type DrawStrokePayload = {
   color: string;
   brushSize: number;
   roomId: string;
+  clientStrokeId?: string;
+};
+
+type RoomJoinedPayload = {
+  roomId: string;
+  message: string;
+  count: number;
 };
 
 type DrawLivePayload = {
@@ -32,11 +39,20 @@ type ClearCanvasPayload = {
   roomId: string;
 };
 
-type LeaveRoomPayload = {
+type RoomPayload = {
   roomId: string;
 };
 
-type RoomPayload = {
+type UndoStrokePayload = RoomPayload & {
+  strokeId?: string;
+};
+
+type RoomUsersUpdatedPayload = {
+  roomId: string;
+  count: number;
+};
+
+type RoomLeftPayload = {
   roomId: string;
 };
 
@@ -48,11 +64,25 @@ type StrokeSocketPayload = {
   brushSize: number;
   isUndone: boolean;
   createdAt: string;
+  clientStrokeId?: string;
 };
+
+type StrokeSavedPayload = StrokeSocketPayload;
+
+const MAX_ROOM_USERS = 20;
 
 const app = express();
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
+
+const emitRoomUsersUpdated = (roomId: string) => {
+  const room = io.sockets.adapter.rooms.get(roomId);
+  const count = room?.size ?? 0;
+  io.to(roomId).emit("room-users-updated", {
+    roomId,
+    count,
+  } satisfies RoomUsersUpdatedPayload);
+};
 
 const fetchActiveStrokes = async (roomId: string) => {
   return prisma.stroke.findMany({
@@ -102,6 +132,11 @@ const io = new Server(server, {
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
+  socket.data.currentRoom = null as string | null;
+  const isSocketAuthorizedForRoom = (roomId: string) => {
+    const currentRoom = socket.data.currentRoom as string | null;
+    return currentRoom === roomId && socket.rooms.has(roomId);
+  };
 
   socket.on("join-room", async (roomId: string) => {
     const trimmedRoomId = roomId?.trim();
@@ -111,21 +146,40 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const joinedRooms = [...socket.rooms];
+    const previousRoom = socket.data.currentRoom as string | null;
 
-    for (const room of joinedRooms) {
-      if (room !== socket.id) {
-        socket.leave(room);
+    if (previousRoom !== trimmedRoomId) {
+      const roomSize = io.sockets.adapter.rooms.get(trimmedRoomId)?.size ?? 0;
+      if (roomSize >= MAX_ROOM_USERS) {
+        socket.emit("room-error", { message: "Sorry, this room is full." });
+        return;
       }
     }
 
+    if (previousRoom && previousRoom !== trimmedRoomId) {
+      socket.leave(previousRoom);
+      const oldRoomCount = io.sockets.adapter.rooms.get(previousRoom)?.size ?? 0;
+      io.to(previousRoom).emit("room-users-updated", {
+        roomId: previousRoom,
+        count: oldRoomCount,
+      } satisfies RoomUsersUpdatedPayload);
+    }
+
     socket.join(trimmedRoomId);
+    socket.data.currentRoom = trimmedRoomId;
+    const count = io.sockets.adapter.rooms.get(trimmedRoomId)?.size ?? 0;
     console.log(`Socket ${socket.id} joined room ${trimmedRoomId}`);
 
     socket.emit("room-joined", {
       roomId: trimmedRoomId,
       message: `Joined room ${trimmedRoomId}`,
-    });
+      count,
+    } satisfies RoomJoinedPayload);
+
+    io.to(trimmedRoomId).emit("room-users-updated", {
+      roomId: trimmedRoomId,
+      count,
+    } satisfies RoomUsersUpdatedPayload);
 
     try {
       const strokes = await fetchActiveStrokes(trimmedRoomId);
@@ -142,6 +196,10 @@ io.on("connection", (socket) => {
     const { roomId, prevX, prevY, x, y, color, brushSize } = data;
 
     if (!roomId) {
+      return;
+    }
+
+    if (!isSocketAuthorizedForRoom(roomId)) {
       return;
     }
 
@@ -167,14 +225,18 @@ io.on("connection", (socket) => {
   });
 
   socket.on("save-stroke", async (data: DrawStrokePayload) => {
-    const { roomId, points, color, brushSize } = data;
+    const { roomId, points, color, brushSize, clientStrokeId } = data;
 
-    if (!roomId || !Array.isArray(points) || points.length === 0) {
+    if (!roomId || !Array.isArray(points) || points.length === 0 || !clientStrokeId) {
+      return;
+    }
+
+    if (!isSocketAuthorizedForRoom(roomId)) {
       return;
     }
 
     try {
-      await prisma.stroke.create({
+      const createdStroke = await prisma.stroke.create({
         data: {
           roomId,
           points: points as unknown as Prisma.InputJsonValue,
@@ -183,24 +245,50 @@ io.on("connection", (socket) => {
           isUndone: false,
         },
       });
+
+      socket.to(roomId).emit("draw-stroke", data);
+      socket.emit("stroke-saved", {
+        id: createdStroke.id,
+        roomId: createdStroke.roomId,
+        points: Array.isArray(createdStroke.points)
+          ? (createdStroke.points as unknown as Point[])
+          : [],
+        color: createdStroke.color,
+        brushSize: createdStroke.brushSize,
+        isUndone: createdStroke.isUndone,
+        createdAt: createdStroke.createdAt.toISOString(),
+        clientStrokeId,
+      } satisfies StrokeSavedPayload);
     } catch (error) {
       console.error("Failed to save stroke:", error);
     }
   });
 
-  socket.on("undo-stroke", async ({ roomId }: RoomPayload) => {
+  socket.on("undo-stroke", async ({ roomId, strokeId }: UndoStrokePayload) => {
     if (!roomId) {
       return;
     }
 
+    if (!isSocketAuthorizedForRoom(roomId)) {
+      return;
+    }
+
     try {
-      const latestStroke = await prisma.stroke.findFirst({
-        where: {
-          roomId,
-          isUndone: false,
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      const latestStroke = strokeId
+        ? await prisma.stroke.findFirst({
+            where: {
+              id: strokeId,
+              roomId,
+              isUndone: false,
+            },
+          })
+        : await prisma.stroke.findFirst({
+            where: {
+              roomId,
+              isUndone: false,
+            },
+            orderBy: { updatedAt: "desc" },
+          });
 
       if (!latestStroke) {
         return;
@@ -226,13 +314,17 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!isSocketAuthorizedForRoom(roomId)) {
+      return;
+    }
+
     try {
       const latestUndoneStroke = await prisma.stroke.findFirst({
         where: {
           roomId,
           isUndone: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { updatedAt: "desc" },
       });
 
       if (!latestUndoneStroke) {
@@ -259,27 +351,59 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!isSocketAuthorizedForRoom(roomId)) {
+      return;
+    }
+
     try {
       await prisma.stroke.deleteMany({
         where: { roomId },
       });
-      socket.to(roomId).emit("clear-canvas");
+      io.to(roomId).emit("clear-canvas");
     } catch (error) {
       console.error("Failed to clear strokes:", error);
     }
   });
 
-  socket.on("leave-room", ({ roomId }: LeaveRoomPayload) => {
-    const trimmedRoomId = roomId?.trim();
-    if (!trimmedRoomId) {
+  socket.on("leave-room", () => {
+    const currentRoom = socket.data.currentRoom as string | null;
+    if (!currentRoom) {
       return;
     }
 
-    socket.leave(trimmedRoomId);
-    console.log(`Socket ${socket.id} left room ${trimmedRoomId}`);
+    socket.leave(currentRoom);
+    socket.data.currentRoom = null;
+
+    const count = io.sockets.adapter.rooms.get(currentRoom)?.size ?? 0;
+    io.to(currentRoom).emit("room-users-updated", {
+      roomId: currentRoom,
+      count,
+    } satisfies RoomUsersUpdatedPayload);
+    socket.emit("room-left", {
+      roomId: currentRoom,
+    } satisfies RoomLeftPayload);
+    console.log(`Socket ${socket.id} left room ${currentRoom}`);
+  });
+
+  socket.on("disconnecting", () => {
+    const currentRoom = socket.data.currentRoom as string | null;
+    if (!currentRoom) {
+      return;
+    }
+
+    const countAfterDisconnect = Math.max(
+      0,
+      (io.sockets.adapter.rooms.get(currentRoom)?.size ?? 1) - 1,
+    );
+
+    socket.to(currentRoom).emit("room-users-updated", {
+      roomId: currentRoom,
+      count: countAfterDisconnect,
+    } satisfies RoomUsersUpdatedPayload);
   });
 
   socket.on("disconnect", () => {
+    socket.data.currentRoom = null;
     console.log("User disconnected:", socket.id);
   });
 });

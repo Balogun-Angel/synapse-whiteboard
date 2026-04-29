@@ -5,6 +5,7 @@ import "./App.css";
 type RoomJoinedPayload = {
   roomId: string;
   message: string;
+  count: number;
 };
 
 type RoomErrorPayload = {
@@ -21,6 +22,7 @@ type DrawStrokePayload = {
   color: string;
   brushSize: number;
   roomId: string;
+  clientStrokeId?: string;
 };
 
 type DrawLivePayload = {
@@ -43,13 +45,24 @@ type ClearCanvasPayload = {
   roomId: string;
 };
 
-type LeaveRoomPayload = {
-  roomId: string;
-};
-
 type RoomPayload = {
   roomId: string;
 };
+
+type UndoStrokePayload = RoomPayload & {
+  strokeId?: string;
+};
+
+type RoomUsersUpdatedPayload = {
+  roomId: string;
+  count: number;
+};
+
+type RoomLeftPayload = {
+  roomId: string;
+};
+
+const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
@@ -58,6 +71,7 @@ function App() {
   const [roomInput, setRoomInput] = useState("");
   const [joinedRoom, setJoinedRoom] = useState("");
   const [roomStatus, setRoomStatus] = useState("");
+  const [roomUsersCount, setRoomUsersCount] = useState(0);
   const [brushColor, setBrushColor] = useState("#111111");
   const [brushSize, setBrushSize] = useState(4);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -65,6 +79,22 @@ function App() {
   const lastPointRef = useRef<Point | null>(null);
   const currentStrokePointsRef = useRef<Point[]>([]);
   const joinedRoomRef = useRef("");
+  const activeStrokesRef = useRef<StrokePayload[]>([]);
+  const undoneStrokesRef = useRef<StrokePayload[]>([]);
+  const pendingLocalStrokesRef = useRef<StrokePayload[]>([]);
+  const pendingServerUndoMatchesRef = useRef<string[]>([]);
+
+  const resetRoomState = (statusMessage: string) => {
+    joinedRoomRef.current = "";
+    setJoinedRoom("");
+    setRoomUsersCount(0);
+    activeStrokesRef.current = [];
+    undoneStrokesRef.current = [];
+    pendingLocalStrokesRef.current = [];
+    pendingServerUndoMatchesRef.current = [];
+    clearCanvasLocal();
+    setRoomStatus(statusMessage);
+  };
 
   useEffect(() => {
     joinedRoomRef.current = joinedRoom;
@@ -90,18 +120,23 @@ function App() {
     newSocket.on("disconnect", () => {
       setIsConnected(false);
       setSocketId("");
-      setJoinedRoom("");
-      setRoomStatus("Disconnected from server");
+      resetRoomState("Disconnected from server");
       console.log("Disconnected from server");
     });
 
-    newSocket.on("room-joined", ({ roomId, message }: RoomJoinedPayload) => {
+    newSocket.on("room-joined", ({ roomId, message, count }: RoomJoinedPayload) => {
+      joinedRoomRef.current = roomId;
       setJoinedRoom(roomId);
       setRoomStatus(message);
+      setRoomUsersCount(count);
     });
 
     newSocket.on("room-error", ({ message }: RoomErrorPayload) => {
       setRoomStatus(message);
+    });
+
+    newSocket.on("room-left", (_payload: RoomLeftPayload) => {
+      resetRoomState("Left room");
     });
 
     newSocket.on("connect_error", (error) => {
@@ -140,19 +175,71 @@ function App() {
     });
 
     newSocket.on("load-strokes", (strokes: StrokePayload[]) => {
-      redrawFromStrokes(strokes);
+      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
+      undoneStrokesRef.current = [];
+      redrawFromStrokes(activeStrokesRef.current);
     });
 
     newSocket.on("stroke-undone", (strokes: StrokePayload[]) => {
-      redrawFromStrokes(strokes);
+      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
+      redrawFromStrokes(activeStrokesRef.current);
     });
 
     newSocket.on("stroke-redone", (strokes: StrokePayload[]) => {
-      redrawFromStrokes(strokes);
+      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
+      redrawFromStrokes(activeStrokesRef.current);
+    });
+
+    newSocket.on("stroke-saved", (savedStroke: StrokePayload) => {
+      const savedClientStrokeId = savedStroke.clientStrokeId;
+      if (!savedClientStrokeId) {
+        return;
+      }
+
+      const pendingUndoneIndex = pendingServerUndoMatchesRef.current.findIndex(
+        (pendingClientStrokeId) => pendingClientStrokeId === savedClientStrokeId,
+      );
+
+      if (pendingUndoneIndex !== -1) {
+        pendingServerUndoMatchesRef.current.splice(pendingUndoneIndex, 1);
+        newSocket.emit("undo-stroke", {
+          roomId: savedStroke.roomId,
+          strokeId: savedStroke.id,
+        } satisfies UndoStrokePayload);
+        return;
+      }
+
+      const pendingIndex = pendingLocalStrokesRef.current.findIndex(
+        (pendingStroke) => pendingStroke.id === savedClientStrokeId,
+      );
+
+      if (pendingIndex !== -1) {
+        pendingLocalStrokesRef.current.splice(pendingIndex, 1);
+      }
+
+      const localStrokeIndex = activeStrokesRef.current.findIndex(
+        (stroke) => stroke.id === savedClientStrokeId,
+      );
+
+      if (localStrokeIndex !== -1) {
+        activeStrokesRef.current.splice(localStrokeIndex, 1, savedStroke);
+      } else if (!activeStrokesRef.current.some((stroke) => stroke.id === savedStroke.id)) {
+        activeStrokesRef.current.push(savedStroke);
+      }
     });
 
     newSocket.on("clear-canvas", () => {
+      activeStrokesRef.current = [];
+      undoneStrokesRef.current = [];
+      pendingLocalStrokesRef.current = [];
+      pendingServerUndoMatchesRef.current = [];
       clearCanvasLocal();
+    });
+
+    newSocket.on("room-users-updated", ({ roomId, count }: RoomUsersUpdatedPayload) => {
+      if (roomId === joinedRoomRef.current) {
+        setRoomUsersCount(count);
+      }
     });
 
     return () => {
@@ -160,13 +247,16 @@ function App() {
       newSocket.off("disconnect");
       newSocket.off("room-joined");
       newSocket.off("room-error");
+      newSocket.off("room-left");
       newSocket.off("connect_error");
       newSocket.off("draw-live");
       newSocket.off("draw-stroke");
       newSocket.off("load-strokes");
       newSocket.off("stroke-undone");
       newSocket.off("stroke-redone");
+      newSocket.off("stroke-saved");
       newSocket.off("clear-canvas");
+      newSocket.off("room-users-updated");
       newSocket.close();
       window.removeEventListener("mouseup", handleWindowMouseUp);
       socketRef.current = null;
@@ -249,24 +339,15 @@ function App() {
     }
   };
 
-  const leaveCurrentRoom = (statusMessage: string) => {
-    const currentRoom = joinedRoomRef.current;
-    const socket = socketRef.current;
-
-    if (socket && currentRoom) {
-      socket.emit("leave-room", { roomId: currentRoom } satisfies LeaveRoomPayload);
-    }
-
-    setJoinedRoom("");
-    clearCanvasLocal();
-    setRoomStatus(statusMessage);
-  };
-
   const handleJoinRoom = () => {
     const trimmedRoomId = roomInput.trim();
 
     if (!trimmedRoomId) {
-      leaveCurrentRoom("Please enter a room ID");
+      const socket = socketRef.current;
+      if (socket && joinedRoomRef.current) {
+        socket.emit("leave-room");
+      }
+      resetRoomState("Please enter a room ID");
       return;
     }
 
@@ -289,9 +370,12 @@ function App() {
     }
 
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     return {
-      x: event.clientX - rect.left - canvas.clientLeft,
-      y: event.clientY - rect.top - canvas.clientTop,
+      x: Math.min(Math.max(0, (event.clientX - rect.left) * scaleX), canvas.width),
+      y: Math.min(Math.max(0, (event.clientY - rect.top) * scaleY), canvas.height),
     };
   };
 
@@ -343,9 +427,10 @@ function App() {
     );
 
     const socket = socketRef.current;
-    if (socket && joinedRoom) {
+    const currentRoom = joinedRoomRef.current;
+    if (socket && currentRoom) {
       socket.emit("draw-live", {
-        roomId: joinedRoom,
+        roomId: currentRoom,
         prevX: lastPoint.x,
         prevY: lastPoint.y,
         x: position.x,
@@ -375,51 +460,117 @@ function App() {
     }
 
     const socket = socketRef.current;
-    if (socket && joinedRoom) {
-      socket.emit("save-stroke", {
-        points,
-        color: brushColor,
-        brushSize,
-        roomId: joinedRoom,
-      } satisfies DrawStrokePayload);
+    const currentRoom = joinedRoomRef.current;
+    if (!socket || !currentRoom) {
+      setRoomStatus("Join a room first");
+      return;
     }
+
+    const localStrokeId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const localStroke: StrokePayload = {
+      id: localStrokeId,
+      createdAt: new Date().toISOString(),
+      points,
+      color: brushColor,
+      brushSize,
+      roomId: currentRoom,
+      clientStrokeId: localStrokeId,
+      isUndone: false,
+    };
+
+    pendingLocalStrokesRef.current.push(localStroke);
+    activeStrokesRef.current.push(localStroke);
+
+    socket.emit("save-stroke", {
+      points: localStroke.points,
+      color: localStroke.color,
+      brushSize: localStroke.brushSize,
+      roomId: localStroke.roomId,
+      clientStrokeId: localStrokeId,
+    } satisfies DrawStrokePayload);
+
+    undoneStrokesRef.current = [];
   };
 
   const clearCanvas = () => {
-    if (!joinedRoom) {
-      setRoomStatus("Join a room before clearing the canvas");
+    const currentRoom = joinedRoomRef.current;
+    if (!currentRoom) {
+      setRoomStatus("Join a room first");
       return;
     }
 
     clearCanvasLocal();
+    activeStrokesRef.current = [];
+    undoneStrokesRef.current = [];
+    pendingLocalStrokesRef.current = [];
+    pendingServerUndoMatchesRef.current = [];
 
     const socket = socketRef.current;
     if (socket) {
-      socket.emit("clear-canvas", { roomId: joinedRoom } satisfies ClearCanvasPayload);
+      socket.emit("clear-canvas", { roomId: currentRoom } satisfies ClearCanvasPayload);
     }
   };
 
   const handleUndo = () => {
-    if (!joinedRoom) {
-      setRoomStatus("Join a room before using undo");
+    const currentRoom = joinedRoomRef.current;
+    if (!currentRoom) {
+      setRoomStatus("Join a room first");
       return;
     }
 
+    let shouldEmitUndoToServer = true;
+    const localActive = activeStrokesRef.current;
+    if (localActive.length > 0) {
+      const strokeToUndo = localActive[localActive.length - 1];
+      activeStrokesRef.current = localActive.slice(0, -1);
+      undoneStrokesRef.current = [...undoneStrokesRef.current, strokeToUndo];
+
+      if (strokeToUndo.id.startsWith("local-")) {
+        shouldEmitUndoToServer = false;
+        pendingLocalStrokesRef.current = pendingLocalStrokesRef.current.filter((pendingStroke) => {
+          return pendingStroke.id !== strokeToUndo.id;
+        });
+        pendingServerUndoMatchesRef.current.push(strokeToUndo.id);
+      }
+
+      redrawFromStrokes(activeStrokesRef.current);
+    }
+
     const socket = socketRef.current;
-    if (socket) {
-      socket.emit("undo-stroke", { roomId: joinedRoom } satisfies RoomPayload);
+    if (socket && shouldEmitUndoToServer) {
+      socket.emit("undo-stroke", { roomId: currentRoom } satisfies RoomPayload);
     }
   };
 
   const handleRedo = () => {
-    if (!joinedRoom) {
-      setRoomStatus("Join a room before using redo");
+    const currentRoom = joinedRoomRef.current;
+    if (!currentRoom) {
+      setRoomStatus("Join a room first");
       return;
     }
 
+    const strokeToRestore = undoneStrokesRef.current.pop();
+    if (!strokeToRestore) {
+      return;
+    }
+
+    activeStrokesRef.current = [...activeStrokesRef.current, strokeToRestore];
+
+    if (strokeToRestore.id.startsWith("local-")) {
+      pendingServerUndoMatchesRef.current = pendingServerUndoMatchesRef.current.filter(
+        (pendingClientStrokeId) => pendingClientStrokeId !== strokeToRestore.id,
+      );
+
+      if (!pendingLocalStrokesRef.current.some((stroke) => stroke.id === strokeToRestore.id)) {
+        pendingLocalStrokesRef.current.push(strokeToRestore);
+      }
+    }
+
+    redrawFromStrokes(activeStrokesRef.current);
+
     const socket = socketRef.current;
     if (socket) {
-      socket.emit("redo-stroke", { roomId: joinedRoom } satisfies RoomPayload);
+      socket.emit("redo-stroke", { roomId: currentRoom } satisfies RoomPayload);
     }
   };
 
@@ -437,68 +588,123 @@ function App() {
     context.clearRect(0, 0, canvas.width, canvas.height);
   };
 
+  const displayedUsers = Array.from(
+    { length: Math.max(joinedRoom ? roomUsersCount : 0, 1) },
+    (_, index) => ({
+      id: index,
+      label: index === 0 ? "You" : `User ${index + 1}`,
+    }),
+  );
+
   return (
-    <div className="app">
-      <h1>Synapse</h1>
-      <p>Status: {isConnected ? "Connected" : "Disconnected"}</p>
-      <p>Socket ID: {socketId || "None"}</p>
-      <div className="room-controls">
-        <input
-          type="text"
-          value={roomInput}
-          onChange={(event) => setRoomInput(event.target.value)}
-          placeholder="Enter room ID"
-        />
-        <button type="button" onClick={handleJoinRoom}>
-          Join Room
-        </button>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="topbar__brand">Synapse</div>
+        <div className="topbar__room">Room: {joinedRoom || "None"}</div>
+        <div className="topbar__users">Users: {joinedRoom ? roomUsersCount : 0}</div>
+      </header>
+
+      <div className="app-layout">
+        <aside className="sidebar">
+          <div className="sidebar__section">
+            <h2 className="sidebar__title">Users</h2>
+            <div className="user-list">
+              {displayedUsers.map((user, index) => (
+                <div
+                  key={user.id}
+                  className={`user-row${index === 0 ? " user-row--active" : ""}`}
+                >
+                  <div className="user-avatar">{user.label.charAt(0)}</div>
+                  <span className="user-name">{user.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="sidebar__section sidebar__section--controls">
+            <p className="sidebar__label">Join a room</p>
+            <div className="room-controls">
+              <input
+                type="text"
+                value={roomInput}
+                onChange={(event) => setRoomInput(event.target.value)}
+                placeholder="Enter room ID"
+                className="room-input"
+              />
+              <button type="button" onClick={handleJoinRoom} className="join-button">
+                Join Room
+              </button>
+            </div>
+            <p className="sidebar__meta">Status: {isConnected ? "Connected" : "Disconnected"}</p>
+            <p className="sidebar__meta">Socket ID: {socketId || "None"}</p>
+            <p className="sidebar__meta">Room Status: {roomStatus || "No room activity yet"}</p>
+          </div>
+        </aside>
+
+        <main className="board-area">
+          <div className="board-card">
+            <div className="whiteboard-shell">
+              <canvas
+                ref={canvasRef}
+                width={900}
+                height={500}
+                className="whiteboard-canvas"
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+              />
+            </div>
+
+            <div className="toolbar">
+              <div className="toolbar__colors">
+                {BRUSH_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`color-swatch${brushColor === color ? " color-swatch--active" : ""}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setBrushColor(color)}
+                    aria-label={`Select ${color} brush color`}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={brushColor}
+                  onChange={(event) => setBrushColor(event.target.value)}
+                  className="color-picker"
+                  aria-label="Choose custom brush color"
+                />
+              </div>
+
+              <div className="toolbar__divider" />
+
+              <label className="toolbar__slider" aria-label="Brush size">
+                <input
+                  type="range"
+                  min={1}
+                  max={30}
+                  value={brushSize}
+                  onChange={(event) => setBrushSize(Number(event.target.value))}
+                />
+                <span>{brushSize}px</span>
+              </label>
+
+              <div className="toolbar__divider" />
+
+              <button type="button" onClick={handleUndo} className="toolbar__button">
+                Undo
+              </button>
+              <button type="button" onClick={handleRedo} className="toolbar__button">
+                Redo
+              </button>
+              <button type="button" onClick={clearCanvas} className="toolbar__button toolbar__button--danger">
+                Clear
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
-      <p>Current Room: {joinedRoom || "None"}</p>
-      <p>Room Status: {roomStatus || "No room activity yet"}</p>
-
-      <div className="drawing-controls">
-        <label>
-          Color:
-          <input
-            type="color"
-            value={brushColor}
-            onChange={(event) => setBrushColor(event.target.value)}
-          />
-        </label>
-
-        <label>
-          Brush Size:
-          <input
-            type="range"
-            min={1}
-            max={30}
-            value={brushSize}
-            onChange={(event) => setBrushSize(Number(event.target.value))}
-          />
-          <span>{brushSize}px</span>
-        </label>
-
-        <button type="button" onClick={clearCanvas}>
-          Clear Canvas
-        </button>
-        <button type="button" onClick={handleUndo}>
-          Undo
-        </button>
-        <button type="button" onClick={handleRedo}>
-          Redo
-        </button>
-      </div>
-
-      <canvas
-        ref={canvasRef}
-        width={900}
-        height={500}
-        className="whiteboard-canvas"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-      />
     </div>
   );
 }
