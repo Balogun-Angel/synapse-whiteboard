@@ -1,0 +1,14 @@
+-- CreateTable
+CREATE TABLE "Stroke" (
+    "id" TEXT NOT NULL,
+    "roomId" TEXT NOT NULL,
+    "prevX" DOUBLE PRECISION NOT NULL,
+    "prevY" DOUBLE PRECISION NOT NULL,
+    "x" DOUBLE PRECISION NOT NULL,
+    "y" DOUBLE PRECISION NOT NULL,
+    "color" TEXT NOT NULL,
+    "brushSize" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Stroke_pkey" PRIMARY KEY ("id")
+);
