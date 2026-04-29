@@ -23,6 +23,16 @@ type DrawStrokePayload = {
   roomId: string;
 };
 
+type DrawLivePayload = {
+  roomId: string;
+  prevX: number;
+  prevY: number;
+  x: number;
+  y: number;
+  color: string;
+  brushSize: number;
+};
+
 type StrokePayload = DrawStrokePayload & {
   id: string;
   createdAt: string;
@@ -98,6 +108,23 @@ function App() {
       console.log("Connection error:", error.message);
     });
 
+    newSocket.on(
+      "draw-live",
+      ({ prevX, prevY, x, y, color, brushSize }: DrawLivePayload) => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+          return;
+        }
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+          return;
+        }
+
+        drawLineSegment(context, prevX, prevY, x, y, color, brushSize);
+      },
+    );
+
     newSocket.on("draw-stroke", ({ points, color, brushSize }: DrawStrokePayload) => {
       const canvas = canvasRef.current;
       if (!canvas) {
@@ -134,6 +161,7 @@ function App() {
       newSocket.off("room-joined");
       newSocket.off("room-error");
       newSocket.off("connect_error");
+      newSocket.off("draw-live");
       newSocket.off("draw-stroke");
       newSocket.off("load-strokes");
       newSocket.off("stroke-undone");
@@ -314,6 +342,19 @@ function App() {
       brushSize,
     );
 
+    const socket = socketRef.current;
+    if (socket && joinedRoom) {
+      socket.emit("draw-live", {
+        roomId: joinedRoom,
+        prevX: lastPoint.x,
+        prevY: lastPoint.y,
+        x: position.x,
+        y: position.y,
+        color: brushColor,
+        brushSize,
+      } satisfies DrawLivePayload);
+    }
+
     currentStrokePointsRef.current.push(position);
     lastPointRef.current = position;
   };
@@ -335,7 +376,7 @@ function App() {
 
     const socket = socketRef.current;
     if (socket && joinedRoom) {
-      socket.emit("draw-stroke", {
+      socket.emit("save-stroke", {
         points,
         color: brushColor,
         brushSize,

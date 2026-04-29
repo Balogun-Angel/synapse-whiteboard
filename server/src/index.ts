@@ -18,6 +18,16 @@ type DrawStrokePayload = {
   roomId: string;
 };
 
+type DrawLivePayload = {
+  roomId: string;
+  prevX: number;
+  prevY: number;
+  x: number;
+  y: number;
+  color: string;
+  brushSize: number;
+};
+
 type ClearCanvasPayload = {
   roomId: string;
 };
@@ -28,6 +38,16 @@ type LeaveRoomPayload = {
 
 type RoomPayload = {
   roomId: string;
+};
+
+type StrokeSocketPayload = {
+  id: string;
+  roomId: string;
+  points: Point[];
+  color: string;
+  brushSize: number;
+  isUndone: boolean;
+  createdAt: string;
 };
 
 const app = express();
@@ -42,6 +62,20 @@ const fetchActiveStrokes = async (roomId: string) => {
     },
     orderBy: { createdAt: "asc" },
   });
+};
+
+const toStrokeSocketPayload = (
+  stroke: Awaited<ReturnType<typeof fetchActiveStrokes>>[number],
+): StrokeSocketPayload => {
+  return {
+    id: stroke.id,
+    roomId: stroke.roomId,
+    points: Array.isArray(stroke.points) ? (stroke.points as unknown as Point[]) : [],
+    color: stroke.color,
+    brushSize: stroke.brushSize,
+    isUndone: stroke.isUndone,
+    createdAt: stroke.createdAt.toISOString(),
+  };
 };
 
 app.use(cors({
@@ -95,15 +129,44 @@ io.on("connection", (socket) => {
 
     try {
       const strokes = await fetchActiveStrokes(trimmedRoomId);
+      const strokePayloads = strokes.map(toStrokeSocketPayload);
 
-      socket.emit("load-strokes", strokes);
+      socket.emit("load-strokes", strokePayloads);
     } catch (error) {
       console.error("Failed to load strokes:", error);
       socket.emit("room-error", { message: "Failed to load room drawing history" });
     }
   });
 
-  socket.on("draw-stroke", async (data: DrawStrokePayload) => {
+  socket.on("draw-live", (data: DrawLivePayload) => {
+    const { roomId, prevX, prevY, x, y, color, brushSize } = data;
+
+    if (!roomId) {
+      return;
+    }
+
+    if (
+      !Number.isFinite(prevX) ||
+      !Number.isFinite(prevY) ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(brushSize)
+    ) {
+      return;
+    }
+
+    socket.to(roomId).emit("draw-live", {
+      roomId,
+      prevX,
+      prevY,
+      x,
+      y,
+      color,
+      brushSize,
+    } satisfies DrawLivePayload);
+  });
+
+  socket.on("save-stroke", async (data: DrawStrokePayload) => {
     const { roomId, points, color, brushSize } = data;
 
     if (!roomId || !Array.isArray(points) || points.length === 0) {
@@ -123,8 +186,6 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Failed to save stroke:", error);
     }
-
-    socket.to(roomId).emit("draw-stroke", data);
   });
 
   socket.on("undo-stroke", async ({ roomId }: RoomPayload) => {
@@ -151,8 +212,10 @@ io.on("connection", (socket) => {
       });
 
       const activeStrokes = await fetchActiveStrokes(roomId);
+      const strokePayloads = activeStrokes.map(toStrokeSocketPayload);
 
-      io.to(roomId).emit("stroke-undone", activeStrokes);
+      socket.emit("stroke-undone", strokePayloads);
+      socket.to(roomId).emit("stroke-undone", strokePayloads);
     } catch (error) {
       console.error("Failed to undo stroke:", error);
     }
@@ -182,8 +245,10 @@ io.on("connection", (socket) => {
       });
 
       const activeStrokes = await fetchActiveStrokes(roomId);
+      const strokePayloads = activeStrokes.map(toStrokeSocketPayload);
 
-      io.to(roomId).emit("stroke-redone", activeStrokes);
+      socket.emit("stroke-redone", strokePayloads);
+      socket.to(roomId).emit("stroke-redone", strokePayloads);
     } catch (error) {
       console.error("Failed to redo stroke:", error);
     }
@@ -198,11 +263,10 @@ io.on("connection", (socket) => {
       await prisma.stroke.deleteMany({
         where: { roomId },
       });
+      socket.to(roomId).emit("clear-canvas");
     } catch (error) {
       console.error("Failed to clear strokes:", error);
     }
-
-    socket.to(roomId).emit("clear-canvas");
   });
 
   socket.on("leave-room", ({ roomId }: LeaveRoomPayload) => {
