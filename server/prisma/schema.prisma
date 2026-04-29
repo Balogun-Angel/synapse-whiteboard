@@ -15,11 +15,9 @@ datasource db {
 model Stroke {
   id        String   @id @default(cuid())
   roomId    String
-  prevX     Float
-  prevY     Float
-  x         Float
-  y         Float
+  points    Json
   color     String
-  brushSize Float
+  brushSize Int
+  isUndone  Boolean  @default(false)
   createdAt DateTime @default(now())
 }

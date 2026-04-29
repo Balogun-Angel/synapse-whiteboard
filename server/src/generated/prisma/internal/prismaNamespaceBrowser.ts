@@ -73,12 +73,10 @@ export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof
 export const StrokeScalarFieldEnum = {
   id: 'id',
   roomId: 'roomId',
-  prevX: 'prevX',
-  prevY: 'prevY',
-  x: 'x',
-  y: 'y',
+  points: 'points',
   color: 'color',
   brushSize: 'brushSize',
+  isUndone: 'isUndone',
   createdAt: 'createdAt'
 } as const
 
@@ -93,10 +91,26 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
+
+
 export const QueryMode = {
   default: 'default',
   insensitive: 'insensitive'
 } as const
 
 export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

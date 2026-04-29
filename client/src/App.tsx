@@ -11,19 +11,22 @@ type RoomErrorPayload = {
   message: string;
 };
 
-type DrawPayload = {
-  prevX: number;
-  prevY: number;
-  x: number;
+type Point = {
   y: number;
+  x: number;
+};
+
+type DrawStrokePayload = {
+  points: Point[];
   color: string;
   brushSize: number;
   roomId: string;
 };
 
-type StrokePayload = DrawPayload & {
+type StrokePayload = DrawStrokePayload & {
   id: string;
   createdAt: string;
+  isUndone?: boolean;
 };
 
 type ClearCanvasPayload = {
@@ -31,6 +34,10 @@ type ClearCanvasPayload = {
 };
 
 type LeaveRoomPayload = {
+  roomId: string;
+};
+
+type RoomPayload = {
   roomId: string;
 };
 
@@ -45,7 +52,8 @@ function App() {
   const [brushSize, setBrushSize] = useState(4);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isDrawingRef = useRef(false);
-  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPointRef = useRef<Point | null>(null);
+  const currentStrokePointsRef = useRef<Point[]>([]);
   const joinedRoomRef = useRef("");
 
   useEffect(() => {
@@ -90,7 +98,7 @@ function App() {
       console.log("Connection error:", error.message);
     });
 
-    newSocket.on("draw", ({ prevX, prevY, x, y, color, brushSize }: DrawPayload) => {
+    newSocket.on("draw-stroke", ({ points, color, brushSize }: DrawStrokePayload) => {
       const canvas = canvasRef.current;
       if (!canvas) {
         return;
@@ -101,33 +109,19 @@ function App() {
         return;
       }
 
-      drawLine(context, prevX, prevY, x, y, color, brushSize);
+      drawStroke(context, points, color, brushSize);
     });
 
     newSocket.on("load-strokes", (strokes: StrokePayload[]) => {
-      clearCanvasLocal();
+      redrawFromStrokes(strokes);
+    });
 
-      const canvas = canvasRef.current;
-      if (!canvas) {
-        return;
-      }
+    newSocket.on("stroke-undone", (strokes: StrokePayload[]) => {
+      redrawFromStrokes(strokes);
+    });
 
-      const context = canvas.getContext("2d");
-      if (!context) {
-        return;
-      }
-
-      for (const stroke of strokes) {
-        drawLine(
-          context,
-          stroke.prevX,
-          stroke.prevY,
-          stroke.x,
-          stroke.y,
-          stroke.color,
-          stroke.brushSize,
-        );
-      }
+    newSocket.on("stroke-redone", (strokes: StrokePayload[]) => {
+      redrawFromStrokes(strokes);
     });
 
     newSocket.on("clear-canvas", () => {
@@ -140,8 +134,10 @@ function App() {
       newSocket.off("room-joined");
       newSocket.off("room-error");
       newSocket.off("connect_error");
-      newSocket.off("draw");
+      newSocket.off("draw-stroke");
       newSocket.off("load-strokes");
+      newSocket.off("stroke-undone");
+      newSocket.off("stroke-redone");
       newSocket.off("clear-canvas");
       newSocket.close();
       window.removeEventListener("mouseup", handleWindowMouseUp);
@@ -149,7 +145,7 @@ function App() {
     };
   }, []);
 
-  const drawLine = (
+  const drawLineSegment = (
     context: CanvasRenderingContext2D,
     prevX: number,
     prevY: number,
@@ -174,6 +170,55 @@ function App() {
     context.lineCap = "round";
     context.lineJoin = "round";
     context.stroke();
+  };
+
+  const drawStroke = (
+    context: CanvasRenderingContext2D,
+    points: Point[],
+    color: string,
+    size: number,
+  ) => {
+    if (points.length === 0) {
+      return;
+    }
+
+    if (points.length === 1) {
+      const point = points[0];
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(point.x, point.y, Math.max(1, size / 2), 0, Math.PI * 2);
+      context.fill();
+      return;
+    }
+
+    context.beginPath();
+    context.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index += 1) {
+      context.lineTo(points[index].x, points[index].y);
+    }
+    context.strokeStyle = color;
+    context.lineWidth = size;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.stroke();
+  };
+
+  const redrawFromStrokes = (strokes: StrokePayload[]) => {
+    clearCanvasLocal();
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    for (const stroke of strokes) {
+      drawStroke(context, stroke.points, stroke.color, stroke.brushSize);
+    }
   };
 
   const leaveCurrentRoom = (statusMessage: string) => {
@@ -229,31 +274,16 @@ function App() {
       return;
     }
 
+    isDrawingRef.current = true;
+    lastPointRef.current = position;
+    currentStrokePointsRef.current = [position];
+
     const context = canvas.getContext("2d");
     if (!context) {
       return;
     }
 
-    isDrawingRef.current = true;
-    lastPointRef.current = position;
-
-    context.fillStyle = brushColor;
-    context.beginPath();
-    context.arc(position.x, position.y, Math.max(1, brushSize / 2), 0, Math.PI * 2);
-    context.fill();
-
-    const socket = socketRef.current;
-    if (socket && joinedRoom) {
-      socket.emit("draw", {
-        prevX: position.x,
-        prevY: position.y,
-        x: position.x,
-        y: position.y,
-        color: brushColor,
-        brushSize,
-        roomId: joinedRoom,
-      } satisfies DrawPayload);
-    }
+    drawStroke(context, [position], brushColor, brushSize);
   };
 
   const draw = (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
@@ -274,7 +304,7 @@ function App() {
       return;
     }
 
-    drawLine(
+    drawLineSegment(
       context,
       lastPoint.x,
       lastPoint.y,
@@ -284,25 +314,34 @@ function App() {
       brushSize,
     );
 
-    const socket = socketRef.current;
-    if (socket && joinedRoom) {
-      socket.emit("draw", {
-        prevX: lastPoint.x,
-        prevY: lastPoint.y,
-        x: position.x,
-        y: position.y,
-        color: brushColor,
-        brushSize,
-        roomId: joinedRoom,
-      } satisfies DrawPayload);
-    }
-
+    currentStrokePointsRef.current.push(position);
     lastPointRef.current = position;
   };
 
   const stopDrawing = () => {
+    if (!isDrawingRef.current) {
+      return;
+    }
+
+    const points = [...currentStrokePointsRef.current];
+
     isDrawingRef.current = false;
     lastPointRef.current = null;
+    currentStrokePointsRef.current = [];
+
+    if (!points.length) {
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (socket && joinedRoom) {
+      socket.emit("draw-stroke", {
+        points,
+        color: brushColor,
+        brushSize,
+        roomId: joinedRoom,
+      } satisfies DrawStrokePayload);
+    }
   };
 
   const clearCanvas = () => {
@@ -316,6 +355,30 @@ function App() {
     const socket = socketRef.current;
     if (socket) {
       socket.emit("clear-canvas", { roomId: joinedRoom } satisfies ClearCanvasPayload);
+    }
+  };
+
+  const handleUndo = () => {
+    if (!joinedRoom) {
+      setRoomStatus("Join a room before using undo");
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (socket) {
+      socket.emit("undo-stroke", { roomId: joinedRoom } satisfies RoomPayload);
+    }
+  };
+
+  const handleRedo = () => {
+    if (!joinedRoom) {
+      setRoomStatus("Join a room before using redo");
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (socket) {
+      socket.emit("redo-stroke", { roomId: joinedRoom } satisfies RoomPayload);
     }
   };
 
@@ -376,6 +439,12 @@ function App() {
 
         <button type="button" onClick={clearCanvas}>
           Clear Canvas
+        </button>
+        <button type="button" onClick={handleUndo}>
+          Undo
+        </button>
+        <button type="button" onClick={handleRedo}>
+          Redo
         </button>
       </div>
 
