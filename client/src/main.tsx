@@ -71,6 +71,5 @@ type ProtectedRouteProps = {
 };
 
 function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const hasAccessToken = Boolean(localStorage.getItem("accessToken"));
-  return hasAccessToken ? children : <Navigate to="/login" replace />;
+  return isAuthenticated() ? children : <Navigate to="/login" replace />;
 }

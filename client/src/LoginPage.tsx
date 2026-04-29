@@ -35,9 +35,24 @@ function LoginPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmedEmail = email.trim().toLowerCase();
+    const formData = new FormData(event.currentTarget);
+    const formEmail = formData.get("email");
+    const formPassword = formData.get("password");
 
-    if (!trimmedEmail || !password) {
+    // Use form values first to handle browser autofill cases
+    // where React state is not updated before submit.
+    const resolvedEmail =
+      typeof formEmail === "string" && formEmail.trim()
+        ? formEmail
+        : email;
+    const resolvedPassword =
+      typeof formPassword === "string" && formPassword
+        ? formPassword
+        : password;
+
+    const trimmedEmail = resolvedEmail.trim().toLowerCase();
+
+    if (!trimmedEmail || !resolvedPassword) {
       setStatus("Please enter email and password");
       return;
     }
@@ -51,7 +66,7 @@ function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: trimmedEmail,
-          password,
+          password: resolvedPassword,
         }),
       });
 
@@ -85,11 +100,13 @@ function LoginPage() {
             </label>
             <input
               id="login-email"
+              name="email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="auth-input"
               placeholder="Email Address"
+              autoComplete="email"
             />
 
             <label className="auth-label" htmlFor="login-password">
@@ -97,11 +114,13 @@ function LoginPage() {
             </label>
             <input
               id="login-password"
+              name="password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="auth-input"
               placeholder="Password"
+              autoComplete="current-password"
             />
 
             <button type="submit" className="auth-submit" disabled={isLoading}>

@@ -2,10 +2,12 @@ import "dotenv/config";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
 import cors from "cors";
 import bcrypt from "bcrypt";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { randomBytes } from "crypto";
+import { createClient } from "redis";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "./generated/prisma/client";
 
@@ -360,6 +362,37 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+const setupRedisAdapter = async () => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn("Redis adapter disabled: REDIS_URL is not set.");
+    return;
+  }
+
+  const pubClient = createClient({ url: redisUrl });
+  const subClient = pubClient.duplicate();
+
+  pubClient.on("error", (error) => {
+    console.warn("Redis pub client error:", error.message);
+  });
+  subClient.on("error", (error) => {
+    console.warn("Redis sub client error:", error.message);
+  });
+
+  try {
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log("Redis adapter connected");
+  } catch (error) {
+    console.warn("Redis adapter unavailable. Running without Redis pub/sub.");
+    if (error instanceof Error) {
+      console.warn(`Redis connection error: ${error.message}`);
+    }
+  }
+};
+
+void setupRedisAdapter();
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
