@@ -90,7 +90,7 @@ type AuthUserPayload = {
   updatedAt: string;
 };
 
-const MAX_ROOM_USERS = 20;
+const MAX_ROOM_USERS = 50;
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_DAYS = 7;
 const SALT_ROUNDS = 10;
@@ -200,6 +200,16 @@ const emitRoomUsersUpdated = (roomId: string) => {
 
 const fetchActiveStrokes = async (roomId: string) => {
   return prisma.stroke.findMany({
+    select: {
+      id: true,
+      roomId: true,
+      points: true,
+      color: true,
+      brushSize: true,
+      createdAt: true,
+      updatedAt: true,
+      isUndone: true,
+    },
     where: {
       roomId,
       isUndone: false,

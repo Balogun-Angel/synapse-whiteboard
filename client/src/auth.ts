@@ -3,6 +3,11 @@ export const ACCESS_TOKEN_STORAGE_KEY = "accessToken";
 export const REFRESH_TOKEN_STORAGE_KEY = "refreshToken";
 const LEGACY_ACCESS_TOKEN_STORAGE_KEY = "synapse_access_token";
 const LEGACY_REFRESH_TOKEN_STORAGE_KEY = "synapse_refresh_token";
+export const AUTH_CHANGED_EVENT = "synapse-auth-changed";
+
+const notifyAuthChanged = () => {
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+};
 
 export const isAuthenticated = () => {
   return Boolean(
@@ -30,6 +35,7 @@ export const storeAuthTokens = (accessToken: string, refreshToken: string) => {
   localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken);
   localStorage.setItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY, accessToken);
   localStorage.setItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY, refreshToken);
+  notifyAuthChanged();
 };
 
 export const clearStoredAuth = () => {
@@ -38,6 +44,7 @@ export const clearStoredAuth = () => {
   localStorage.removeItem(LEGACY_ACCESS_TOKEN_STORAGE_KEY);
   localStorage.removeItem(LEGACY_REFRESH_TOKEN_STORAGE_KEY);
   localStorage.removeItem("authUser");
+  notifyAuthChanged();
 };
 
 export const ensureValidAccessToken = async () => {
