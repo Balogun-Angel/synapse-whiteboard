@@ -75,13 +75,22 @@ export const ensureValidAccessToken = async () => {
       return false;
     }
 
-    const refreshData = (await refreshResponse.json()) as { accessToken?: string };
-    if (!refreshData.accessToken) {
+    const refreshData = (await refreshResponse.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+      user?: unknown;
+    };
+    if (!refreshData.accessToken || !refreshData.refreshToken) {
       clearStoredAuth();
       return false;
     }
 
-    storeAuthTokens(refreshData.accessToken, refreshToken);
+    storeAuthTokens(refreshData.accessToken, refreshData.refreshToken);
+
+    if (refreshData.user) {
+      localStorage.setItem("authUser", JSON.stringify(refreshData.user));
+      return true;
+    }
 
     const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${refreshData.accessToken}` },
