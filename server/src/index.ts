@@ -694,7 +694,7 @@ io.on("connection", (socket) => {
               roomId,
               isUndone: false,
             },
-            orderBy: { updatedAt: "desc" },
+            orderBy: { createdAt: "desc" },
           });
 
       if (!latestStroke) {
