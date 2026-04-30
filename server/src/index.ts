@@ -233,7 +233,11 @@ const toStrokeSocketPayload = (
 };
 
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: [
+    "http://localhost:5173",
+    "http://3.14.84.70:5173",
+    "http://3.14.84.70"
+  ],
   credentials: true
 }));
 
@@ -479,8 +483,12 @@ const server = http.createServer(app);
 // socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: [
+      "http://localhost:5173",
+      "http://3.14.84.70:5173",
+      "http://3.14.84.70"
+    ],
+    credentials: true
   }
 });
 
