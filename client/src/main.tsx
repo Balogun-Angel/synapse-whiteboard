@@ -8,44 +8,70 @@ import LoginPage from "./LoginPage.tsx";
 import SignupPage from "./SignupPage.tsx";
 import {
   API_BASE_URL,
+  AUTH_CHANGED_EVENT,
   clearStoredAuth,
   ensureValidAccessToken,
   getStoredRefreshToken,
   isAuthenticated,
 } from "./auth";
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={<Navigate to={isAuthenticated() ? "/whiteboard" : "/login"} replace />}
-        />
-        <Route
-          path="/login"
-          element={isAuthenticated() ? <Navigate to="/whiteboard" replace /> : <LoginPage />}
-        />
-        <Route
-          path="/signup"
-          element={isAuthenticated() ? <Navigate to="/whiteboard" replace /> : <SignupPage />}
-        />
-        <Route
-          path="/whiteboard"
-          element={
-            <ProtectedRoute>
-              <WhiteboardRoute />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <AppRoutes />
     </BrowserRouter>
   </StrictMode>,
 );
 
+function AppRoutes() {
+  const [isAuthed, setIsAuthed] = useState(() => isAuthenticated());
+
+  useEffect(() => {
+    const syncAuthState = () => {
+      setIsAuthed(isAuthenticated());
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key.includes("access_token") || event.key.includes("refresh_token") || event.key === "accessToken" || event.key === "refreshToken" || event.key === "authUser") {
+        syncAuthState();
+      }
+    };
+
+    window.addEventListener(AUTH_CHANGED_EVENT, syncAuthState);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, syncAuthState);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to={isAuthed ? "/whiteboard" : "/login"} replace />} />
+      <Route path="/login" element={isAuthed ? <Navigate to="/whiteboard" replace /> : <LoginPage />} />
+      <Route path="/signup" element={isAuthed ? <Navigate to="/whiteboard" replace /> : <SignupPage />} />
+      <Route
+        path="/whiteboard"
+        element={
+          <ProtectedRoute isAuthed={isAuthed}>
+            <WhiteboardRoute />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to={isAuthed ? "/whiteboard" : "/login"} replace />} />
+    </Routes>
+  );
+}
+
 function WhiteboardRoute() {
   const navigate = useNavigate();
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(() => isAuthenticated());
+
+  const handleSessionInvalid = () => {
+    clearStoredAuth();
+    setIsReady(false);
+    navigate("/login", { replace: true });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -53,8 +79,7 @@ function WhiteboardRoute() {
     const validateSession = async () => {
       const hasValidAccessToken = await ensureValidAccessToken();
       if (!hasValidAccessToken) {
-        clearStoredAuth();
-        navigate("/login", { replace: true });
+        handleSessionInvalid();
         return;
       }
 
@@ -85,11 +110,12 @@ function WhiteboardRoute() {
     }
 
     clearStoredAuth();
+    setIsReady(false);
     navigate("/login", { replace: true });
   };
 
   if (!isReady) {
-    return null;
+    return <div>Redirecting to login...</div>;
   }
 
   return <App onLogout={handleLogout} />;
@@ -97,8 +123,9 @@ function WhiteboardRoute() {
 
 type ProtectedRouteProps = {
   children: ReactElement;
+  isAuthed: boolean;
 };
 
-function ProtectedRoute({ children }: ProtectedRouteProps) {
-  return isAuthenticated() ? children : <Navigate to="/login" replace />;
+function ProtectedRoute({ children, isAuthed }: ProtectedRouteProps) {
+  return isAuthed ? children : <Navigate to="/login" replace />;
 }

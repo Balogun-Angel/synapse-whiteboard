@@ -98,6 +98,13 @@ function App({ onLogout }: AppProps) {
   const pendingServerUndoMatchesRef = useRef<string[]>([]);
   const currentUserPresenceKeyRef = useRef("");
 
+  const composeRenderableStrokes = (strokes: StrokePayload[]) => {
+    if (pendingLocalStrokesRef.current.length === 0) {
+      return strokes;
+    }
+    return [...strokes, ...pendingLocalStrokesRef.current];
+  };
+
   const roomUsersRefineAndSort = ({
     users,
     currentUserPresenceKey,
@@ -233,19 +240,24 @@ function App({ onLogout }: AppProps) {
     });
 
     newSocket.on("load-strokes", (strokes: StrokePayload[]) => {
-      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
-      undoneStrokesRef.current = [];
-      redrawFromStrokes(activeStrokesRef.current);
+      const renderableStrokes = composeRenderableStrokes(strokes);
+      activeStrokesRef.current = renderableStrokes;
+      if (undoneStrokesRef.current.length > 0) {
+        undoneStrokesRef.current = [];
+      }
+      redrawFromStrokes(renderableStrokes);
     });
 
     newSocket.on("stroke-undone", (strokes: StrokePayload[]) => {
-      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
-      redrawFromStrokes(activeStrokesRef.current);
+      const renderableStrokes = composeRenderableStrokes(strokes);
+      activeStrokesRef.current = renderableStrokes;
+      redrawFromStrokes(renderableStrokes);
     });
 
     newSocket.on("stroke-redone", (strokes: StrokePayload[]) => {
-      activeStrokesRef.current = [...strokes, ...pendingLocalStrokesRef.current];
-      redrawFromStrokes(activeStrokesRef.current);
+      const renderableStrokes = composeRenderableStrokes(strokes);
+      activeStrokesRef.current = renderableStrokes;
+      redrawFromStrokes(renderableStrokes);
     });
 
     newSocket.on("stroke-saved", (savedStroke: StrokePayload) => {
