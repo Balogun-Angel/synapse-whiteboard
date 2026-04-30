@@ -1,4 +1,4 @@
-export const API_BASE_URL = "http://localhost:5000";
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "/auth";
 export const ACCESS_TOKEN_STORAGE_KEY = "accessToken";
 export const REFRESH_TOKEN_STORAGE_KEY = "refreshToken";
 const LEGACY_ACCESS_TOKEN_STORAGE_KEY = "synapse_access_token";
@@ -54,7 +54,7 @@ export const ensureValidAccessToken = async () => {
   }
 
   try {
-    const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
+    const meResponse = await fetch(`${API_BASE_URL}/me`, {
       headers: { Authorization: `Bearer ${currentAccessToken}` },
     });
     if (meResponse.ok) {
@@ -71,7 +71,7 @@ export const ensureValidAccessToken = async () => {
   }
 
   try {
-    const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    const refreshResponse = await fetch(`${API_BASE_URL}/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -99,7 +99,7 @@ export const ensureValidAccessToken = async () => {
       return true;
     }
 
-    const meResponse = await fetch(`${API_BASE_URL}/auth/me`, {
+    const meResponse = await fetch(`${API_BASE_URL}/me`, {
       headers: { Authorization: `Bearer ${refreshData.accessToken}` },
     });
     if (meResponse.ok) {

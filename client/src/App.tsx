@@ -71,6 +71,7 @@ type RoomUserPresence = {
 };
 
 const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
+const SOCKET_PATH = import.meta.env.VITE_SOCKET_URL || "/socket.io";
 
 type AppProps = {
   onLogout: () => void;
@@ -159,9 +160,11 @@ function App({ onLogout }: AppProps) {
       localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
       localStorage.getItem("synapse_access_token");
 
-    const newSocket: Socket = io("http://localhost:5000", {
+    const newSocket: Socket = io("/", {
+      path: "/socket.io",
       transports: ["websocket", "polling"],
       auth: { token: accessToken },
+      withCredentials: true,
     });
     socketRef.current = newSocket;
     const handleWindowMouseUp = () => {
