@@ -317,6 +317,35 @@ app.post("/auth/refresh", async (req, res) => {
     return;
   }
 
+  let storedToken;
+  try {
+    storedToken = await prisma.refreshToken.findUnique({
+      where: { token: tokenValue },
+      include: { user: true },
+    });
+  } catch (error) {
+    console.error("Failed to look up refresh token:", error);
+    res.status(500).json({ message: "Failed to refresh token" });
+    return;
+  }
+
+  if (!storedToken) {
+    res.status(401).json({ message: "Invalid refresh token" });
+    return;
+  }
+
+  if (storedToken.expiresAt <= new Date()) {
+    try {
+      await prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
+    } catch (error) {
+      console.error("Failed to delete expired refresh token:", error);
+      res.status(500).json({ message: "Failed to refresh token" });
+      return;
+    }
+    res.status(401).json({ message: "Refresh token expired or invalid" });
+    return;
+  }
+
   try {
     jwt.verify(tokenValue, refreshSecret);
   } catch {
@@ -324,18 +353,51 @@ app.post("/auth/refresh", async (req, res) => {
     return;
   }
 
+  type RefreshTxResult =
+    | { status: "already_used" }
+    | { status: "ok"; user: { id: string; email: string; username: string; createdAt: Date; updatedAt: Date }; nextRefreshToken: string };
+
   try {
-    const storedToken = await prisma.refreshToken.findUnique({
-      where: { token: tokenValue },
-      include: { user: true },
+    const rotation = await prisma.$transaction(async (tx) => {
+      const deleteResult = await tx.refreshToken.deleteMany({
+        where: { id: storedToken.id, token: tokenValue },
+      });
+
+      if (deleteResult.count === 0) {
+        return { status: "already_used" } satisfies RefreshTxResult;
+      }
+
+      const nextRefreshToken = createRefreshTokenValue(storedToken.user.id);
+      const nextRefreshExpiresAt = new Date(
+        Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+      );
+
+      await tx.refreshToken.create({
+        data: {
+          token: nextRefreshToken,
+          userId: storedToken.user.id,
+          expiresAt: nextRefreshExpiresAt,
+        },
+      });
+
+      return {
+        status: "ok",
+        user: storedToken.user,
+        nextRefreshToken,
+      } satisfies RefreshTxResult;
     });
-    if (!storedToken || storedToken.expiresAt <= new Date()) {
-      res.status(401).json({ message: "Refresh token expired or invalid" });
+
+    if (rotation.status === "already_used") {
+      res.status(401).json({ message: "Invalid refresh token" });
       return;
     }
 
-    const accessToken = createAccessToken(storedToken.user);
-    res.json({ accessToken });
+    const accessToken = createAccessToken(rotation.user);
+    res.json({
+      accessToken,
+      refreshToken: rotation.nextRefreshToken,
+      user: toAuthUserPayload(rotation.user),
+    });
   } catch (error) {
     console.error("Failed to refresh access token:", error);
     res.status(500).json({ message: "Failed to refresh token" });
