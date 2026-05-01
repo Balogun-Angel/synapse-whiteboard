@@ -2,7 +2,6 @@ services:
   backend:
     build:
       context: ./server
-    command: npm run dev
     ports:
       - "5000:5000"
     env_file:
@@ -12,26 +11,14 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       REDIS_URL: redis://redis:6379
-      CHOKIDAR_USEPOLLING: "true"
-      CHOKIDAR_INTERVAL: "500"
-    volumes:
-      - ./server:/app
-      - /app/node_modules
     depends_on:
       - redis
 
   frontend:
     build:
       context: ./client
-    command: npm run dev -- --host 0.0.0.0
     ports:
-      - "5173:5173"
-    environment:
-      CHOKIDAR_USEPOLLING: "true"
-      CHOKIDAR_INTERVAL: "100"
-    volumes:
-      - ./client:/app
-      - /app/node_modules
+      - "8080:80"
     depends_on:
       - backend
 
