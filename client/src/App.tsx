@@ -71,7 +71,6 @@ type RoomUserPresence = {
 };
 
 const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
-const SOCKET_PATH = import.meta.env.VITE_SOCKET_URL || "/socket.io";
 
 type AppProps = {
   onLogout: () => void;
