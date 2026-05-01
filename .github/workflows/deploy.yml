@@ -25,12 +25,10 @@ jobs:
             git pull origin main
 
             cd client
-            npm install
             npm run build
 
             sudo systemctl restart nginx
 
             cd ../server
-            npm install
             pm2 restart synapse-backend
             pm2 save
