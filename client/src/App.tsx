@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { io, Socket } from "socket.io-client";
 import { ACCESS_TOKEN_STORAGE_KEY } from "./auth";
+import { buildRoomPath } from "./utils/room";
 import "./App.css";
 
 type RoomJoinedPayload = {
@@ -74,13 +76,25 @@ const BRUSH_COLORS = ["#111111", "#6366f1", "#ef4444"];
 
 type AppProps = {
   onLogout: () => void;
+  initialRoomId?: string;
 };
 
-function App({ onLogout }: AppProps) {
+type RoomLocationState = {
+  created?: boolean;
+  roomName?: string;
+};
+
+function App({ onLogout, initialRoomId = "" }: AppProps) {
+  const location = useLocation();
+  const roomLocationState = location.state as RoomLocationState | null;
+  const [showCreatedBanner, setShowCreatedBanner] = useState(
+    () => Boolean(roomLocationState?.created && initialRoomId),
+  );
+  const [copyLinkStatus, setCopyLinkStatus] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [socketId, setSocketId] = useState("");
   const socketRef = useRef<Socket | null>(null);
-  const [roomInput, setRoomInput] = useState("");
+  const [roomInput, setRoomInput] = useState(initialRoomId);
   const [joinedRoom, setJoinedRoom] = useState("");
   const [roomStatus, setRoomStatus] = useState("");
   const [roomUsersCount, setRoomUsersCount] = useState(0);
@@ -97,6 +111,7 @@ function App({ onLogout }: AppProps) {
   const pendingLocalStrokesRef = useRef<StrokePayload[]>([]);
   const pendingServerUndoMatchesRef = useRef<string[]>([]);
   const currentUserPresenceKeyRef = useRef("");
+  const hasAutoJoinedRef = useRef(false);
 
   const composeRenderableStrokes = (strokes: StrokePayload[]) => {
     if (pendingLocalStrokesRef.current.length === 0) {
@@ -141,6 +156,27 @@ function App({ onLogout }: AppProps) {
   useEffect(() => {
     joinedRoomRef.current = joinedRoom;
   }, [joinedRoom]);
+
+  const joinRoomById = (trimmedRoomId: string) => {
+    const socket = socketRef.current;
+    if (!socket || !isConnected) {
+      setRoomStatus("Not connected to server");
+      return;
+    }
+
+    socket.emit("join-room", trimmedRoomId);
+    setRoomInput(trimmedRoomId);
+    setRoomStatus("Joining room...");
+  };
+
+  useEffect(() => {
+    if (!initialRoomId || hasAutoJoinedRef.current || !isConnected) {
+      return;
+    }
+
+    hasAutoJoinedRef.current = true;
+    joinRoomById(initialRoomId);
+  }, [initialRoomId, isConnected]);
 
   useEffect(() => {
     const authUserRaw = localStorage.getItem("authUser");
@@ -429,14 +465,26 @@ function App({ onLogout }: AppProps) {
       return;
     }
 
-    const socket = socketRef.current;
-    if (!socket || !isConnected) {
-      setRoomStatus("Not connected to server");
+    joinRoomById(trimmedRoomId);
+  };
+
+  const handleCopyRoomLink = async () => {
+    const currentRoom = joinedRoomRef.current || initialRoomId;
+    if (!currentRoom) {
       return;
     }
 
-    socket.emit("join-room", trimmedRoomId);
-    setRoomStatus("Joining room...");
+    const roomPath = buildRoomPath(currentRoom);
+    const shareUrl = `${window.location.origin}${roomPath}`;
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyLinkStatus("Copied!");
+    } catch {
+      setCopyLinkStatus("Copy failed");
+    }
+
+    window.setTimeout(() => setCopyLinkStatus(""), 2000);
   };
 
   const getMousePosition = (
@@ -727,6 +775,25 @@ function App({ onLogout }: AppProps) {
         </aside>
 
         <main className="board-area">
+          {showCreatedBanner && joinedRoom ? (
+            <div className="room-share-banner">
+              <p className="room-share-banner__text">
+                Whiteboard Created! Link: {buildRoomPath(joinedRoom)}
+              </p>
+              <button type="button" className="room-share-banner__copy" onClick={handleCopyRoomLink}>
+                {copyLinkStatus || "Copy Link"}
+              </button>
+              <button
+                type="button"
+                className="room-share-banner__dismiss"
+                onClick={() => setShowCreatedBanner(false)}
+                aria-label="Dismiss share banner"
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
+
           <div className="board-card">
             <div className="whiteboard-shell">
               <canvas

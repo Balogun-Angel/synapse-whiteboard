@@ -1,9 +1,10 @@
 import { StrictMode, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import "./index.css";
 import App from "./App.tsx";
+import DashboardPage from "./DashboardPage.tsx";
 import LoginPage from "./LoginPage.tsx";
 import SignupPage from "./SignupPage.tsx";
 import {
@@ -47,9 +48,25 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={isAuthed ? "/whiteboard" : "/login"} replace />} />
-      <Route path="/login" element={isAuthed ? <Navigate to="/whiteboard" replace /> : <LoginPage />} />
-      <Route path="/signup" element={isAuthed ? <Navigate to="/whiteboard" replace /> : <SignupPage />} />
+      <Route path="/" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />
+      <Route path="/login" element={isAuthed ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+      <Route path="/signup" element={isAuthed ? <Navigate to="/dashboard" replace /> : <SignupPage />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute isAuthed={isAuthed}>
+            <DashboardRoute />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/room/:roomId"
+        element={
+          <ProtectedRoute isAuthed={isAuthed}>
+            <RoomRoute />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/whiteboard"
         element={
@@ -58,12 +75,12 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to={isAuthed ? "/whiteboard" : "/login"} replace />} />
+      <Route path="*" element={<Navigate to={isAuthed ? "/dashboard" : "/login"} replace />} />
     </Routes>
   );
 }
 
-function WhiteboardRoute() {
+function useValidatedSession() {
   const navigate = useNavigate();
   const [isReady, setIsReady] = useState(() => isAuthenticated());
 
@@ -114,11 +131,43 @@ function WhiteboardRoute() {
     navigate("/login", { replace: true });
   };
 
+  return { isReady, handleLogout };
+}
+
+function DashboardRoute() {
+  const { isReady, handleLogout } = useValidatedSession();
+
   if (!isReady) {
     return <div>Redirecting to login...</div>;
   }
 
-  return <App onLogout={handleLogout} />;
+  return <DashboardPage onLogout={() => void handleLogout()} />;
+}
+
+function RoomRoute() {
+  const { roomId } = useParams<{ roomId: string }>();
+  const { isReady, handleLogout } = useValidatedSession();
+  const decodedRoomId = roomId ? decodeURIComponent(roomId) : "";
+
+  if (!isReady) {
+    return <div>Redirecting to login...</div>;
+  }
+
+  if (!decodedRoomId) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <App onLogout={() => void handleLogout()} initialRoomId={decodedRoomId} />;
+}
+
+function WhiteboardRoute() {
+  const { isReady, handleLogout } = useValidatedSession();
+
+  if (!isReady) {
+    return <div>Redirecting to login...</div>;
+  }
+
+  return <App onLogout={() => void handleLogout()} />;
 }
 
 type ProtectedRouteProps = {

@@ -78,7 +78,7 @@ function LoginPage() {
       const authData = (await response.json()) as AuthResponse;
       storeAuthTokens(authData.accessToken, authData.refreshToken);
       localStorage.setItem("authUser", JSON.stringify(authData.user));
-      navigate("/whiteboard", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Login failed";
       setStatus(errorMessage);
